@@ -1,0 +1,115 @@
+# ==============================================================================
+# NEXUS — Default Configuration
+# ==============================================================================
+
+[general]
+app_name = "NEXUS"
+version = "0.1.0"
+data_dir = "~/.nexus"
+log_level = "INFO"
+log_file = "nexus.log"
+
+[llm]
+# Default model tier for different task types
+default_provider = "gemini"       # gemini | openai | anthropic | ollama
+fast_model = "gemini-flash-lite-latest"
+smart_model = "gemini-flash-lite-latest"
+vision_model = "gemini-flash-lite-latest"
+local_model = "llama3"
+
+# Generation settings
+temperature = 0.7
+max_tokens = 4096
+timeout_seconds = 30
+max_retries = 2
+
+[llm.ollama]
+base_url = "http://localhost:11434"
+
+[voice]
+enabled = false                    # Set to true to enable voice
+wake_word = "hey nexus"
+stt_provider = "google_web"        # google_web | vosk
+tts_provider = "edge"              # edge | pyttsx3
+interaction_mode = "voice_and_text" # voice_and_text | voice_only | text_only
+silence_threshold_ms = 1500
+sample_rate = 16000
+interrupt_enabled = true
+language = "en-US"
+supported_languages = ["en-US"]    # Future: ["en-US", "ta-IN"]
+
+[voice.whisper]
+model_size = "base"                # tiny | base | small | medium | large
+
+[voice.stt]
+language = "en-US"
+supported_languages = ["en-US"]
+
+[voice.tts]
+voice = "en-US-AndrewNeural"        # Edge TTS voice name (Breeze Male Natural Expressive)
+speed = 0.92                        # Natural relaxed human speaking pace (medium speed)
+fallback_voice = ""                # pyttsx3 voice ID (auto-detect if empty)
+
+[voice.vad]
+threshold = 0.5                    # Silero confidence (0.0–1.0)
+min_speech_ms = 250                # Minimum speech duration to trigger
+energy_threshold = 300             # Energy pre-filter threshold
+
+[memory]
+working_memory_max_turns = 20
+short_term_retention_hours = 168   # 7 days
+consolidation_interval_minutes = 60
+embedding_model = "all-MiniLM-L6-v2"
+max_retrieval_results = 10
+
+[database]
+url = "sqlite+aiosqlite:///~/.nexus/nexus.db"
+echo = false
+
+[vector_store]
+provider = "chromadb"
+persist_directory = "~/.nexus/chromadb"
+collection_name = "nexus_memory"
+
+[security]
+require_auth = false               # Enable when auth is implemented
+session_timeout_minutes = 30
+max_high_risk_per_minute = 5
+audit_enabled = true
+encryption_enabled = false         # Enable when encryption is implemented
+
+[security.permissions]
+# Default permission levels: auto | confirm | deny
+low_risk = "auto"
+medium_risk = "auto"
+high_risk = "confirm"
+critical_risk = "confirm"
+
+[laptop_agent]
+enabled = true
+allowed_directories = ["~", "C:/Users"]
+browser = "chromium"               # chromium | firefox | webkit
+screenshot_format = "png"
+
+[android_agent]
+enabled = false                    # Enable in Phase 5
+adb_path = "adb"
+connection_mode = "usb"            # usb | wifi | tcp
+device_serial = ""                 # Auto-detect if empty
+
+[comms]
+enabled = false                    # Enable in Phase 5
+websocket_port = 8765
+grpc_port = 50051
+heartbeat_interval_seconds = 10
+
+[ui]
+terminal_theme = "dark"
+show_thinking = true               # Show AI reasoning process
+show_tool_calls = true             # Show tool execution details
+
+[api]
+host = "127.0.0.1"
+port = 8000
+cors_origins = ["*"]               # Restrict in production
+api_prefix = "/api"

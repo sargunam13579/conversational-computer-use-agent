@@ -1,0 +1,41 @@
+"""NEXUS API routes package."""
+
+from nexus.api.routes import (
+    accessibility_api,
+    android,
+    automation,
+    browser,
+    chat,
+    computer_use,
+    conversations,
+    devices,
+    health,
+    identity,
+    laptop,
+    memory,
+    pairing_api,
+    permissions_api,
+    tasks,
+    vision,
+    voice,
+)
+
+__all__ = [
+    "accessibility_api",
+    "android",
+    "automation",
+    "browser",
+    "chat",
+    "computer_use",
+    "conversations",
+    "devices",
+    "health",
+    "identity",
+    "laptop",
+    "memory",
+    "pairing_api",
+    "permissions_api",
+    "tasks",
+    "vision",
+    "voice",
+]
