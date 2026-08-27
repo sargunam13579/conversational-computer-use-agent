@@ -73,11 +73,36 @@ export const api = {
   },
 
   // Chat & Conversation
-  async sendMessage(message: string, conversationId?: string): Promise<ChatResponse> {
-    const { data } = await apiClient.post<ChatResponse>('/chat', {
-      message,
-      conversation_id: conversationId,
-    });
+  async sendMessage(
+    message: string,
+    conversationId?: string,
+    files: File[] = []
+  ): Promise<ChatResponse> {
+    const formData = new FormData();
+
+    formData.append('message', message);
+
+    if (conversationId) {
+      formData.append(
+        'conversation_id',
+        conversationId
+      );
+    }
+
+    for (const file of files) {
+      formData.append('files', file);
+    }
+
+    const { data } = await apiClient.post<ChatResponse>(
+      '/chat',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+
     return data;
   },
 

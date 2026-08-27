@@ -195,7 +195,7 @@ class NexusBrain:
                     return target
         return None
 
-    async def process(self, user_input: str) -> str:
+    async def process(self, user_input: str, allow_tools: bool = True) -> str:
         """
         Process a user input and return the response.
 
@@ -203,6 +203,7 @@ class NexusBrain:
 
         Args:
             user_input: The user's message or command.
+            allow_tools: Whether system/laptop tools are allowed for execution.
 
         Returns:
             NEXUS's response as a string.
@@ -256,8 +257,8 @@ class NexusBrain:
         # Step 6: Inspect user input for explicit preference learning
         await self._memory.auto_learn_from_message(clean_input)
 
-        # Step 7: Check if input is a multi-step task goal
-        if self._task_manager.is_multi_step_goal(clean_input):
+        # Step 7: Check if input is a multi-step task goal (only if tools allowed)
+        if allow_tools and self._task_manager.is_multi_step_goal(clean_input):
             log.info("Detected multi-step goal, routing to TaskManager")
             task_result = await self._task_manager.run_goal(clean_input)
             if self._settings.ui.show_thinking and task_result.plan_id:
@@ -277,6 +278,7 @@ class NexusBrain:
             user_input=clean_input,
             tier=tier,
             show_thinking=self._settings.ui.show_thinking,
+            allow_tools=allow_tools,
         )
         self._audio_feedback.on_success()
         return response

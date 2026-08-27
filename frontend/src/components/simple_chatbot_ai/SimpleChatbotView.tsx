@@ -19,14 +19,22 @@ import { api } from '../../services/api';
 import { ConvoComputerUseAgentView } from '../convo_computer_use_agent';
 
 interface SimpleChatbotViewProps {
-  onSendMessage?: (message: string) => void;
+  onSendMessage?: (
+    message: string,
+    files?: File[]
+  ) => void;
+
   externalPrompt?: string | null;
 }
 
 interface AttachedFile {
   name: string;
   size: number;
-  type: string;
+
+  type: 'image' | 'file';
+
+  file: File;
+
   url?: string;
 }
 
@@ -49,6 +57,8 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
     isProcessing,
     speakInstant,
     stopSpeaking,
+    stopListening,
+    setVoiceModeEnabled,
   } = useVoice();
 
   const [inputMessage, setInputMessage] = useState('');
@@ -76,7 +86,9 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
     } else {
       setIsComputerUseActive(false);
       stopSpeaking();
-      api.stopComputerUse().catch(() => {});
+      stopListening();
+      setVoiceModeEnabled(false);
+      api.stopComputerUse().catch(() => { });
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
@@ -107,17 +119,25 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
   }, []);
 
   const handleSend = (customText?: string) => {
-    let text = (customText || inputMessage).trim();
-    if (!text && attachedFiles.length === 0) return;
+    const text = (
+      customText || inputMessage
+    ).trim();
 
-    if (attachedFiles.length > 0) {
-      const fileLabels = attachedFiles.map((f) => `[Attached: ${f.name}]`).join(' ');
-      text = text ? `${text} ${fileLabels}` : fileLabels;
+    if (!text && attachedFiles.length === 0) {
+      return;
     }
+
+    const actualFiles = attachedFiles.map(
+      (item) => item.file
+    );
 
     if (onSendMessage) {
-      onSendMessage(text);
+      onSendMessage(
+        text,
+        actualFiles
+      );
     }
+
     setInputMessage('');
     setAttachedFiles([]);
     setShowAddMenu(false);
@@ -164,37 +184,61 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
     setEditingMsgIdx(null);
   };
 
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
+
+    if (!files || files.length === 0) {
+      return;
+    }
+
     const file = files[0];
+
     setAttachedFiles((prev) => [
       ...prev,
       {
         name: file.name,
         size: file.size,
         type: 'image',
+        file,
         url: URL.createObjectURL(file),
       },
     ]);
+
     setShowAddMenu(false);
-    if (imageInputRef.current) imageInputRef.current.value = '';
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
   };
 
-  const handleDocFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDocFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
+
+    if (!files || files.length === 0) {
+      return;
+    }
+
     const file = files[0];
+
     setAttachedFiles((prev) => [
       ...prev,
       {
         name: file.name,
         size: file.size,
         type: 'file',
+        file,
       },
     ]);
+
     setShowAddMenu(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const removeAttachedFile = (idx: number) => {
@@ -234,7 +278,7 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
               onClick={() => {
                 setIsComputerUseActive(false);
                 stopSpeaking();
-                api.stopComputerUse().catch(() => {});
+                api.stopComputerUse().catch(() => { });
                 if (typeof window !== 'undefined' && window.speechSynthesis) {
                   window.speechSynthesis.cancel();
                 }
@@ -249,11 +293,10 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
 
           <button
             onClick={handleToggleComputerUse}
-            className={`relative group p-0.5 rounded-full transition-all duration-300 focus:outline-none ${
-              isComputerUseActive
-                ? 'ring-2 ring-cyan-400 shadow-[0_0_22px_rgba(0,240,255,0.6)] scale-105'
-                : 'hover:ring-2 hover:ring-cyan-500/50 hover:shadow-[0_0_16px_rgba(0,240,255,0.3)]'
-            }`}
+            className={`relative group p-0.5 rounded-full transition-all duration-300 focus:outline-none ${isComputerUseActive
+              ? 'ring-2 ring-cyan-400 shadow-[0_0_22px_rgba(0,240,255,0.6)] scale-105'
+              : 'hover:ring-2 hover:ring-cyan-500/50 hover:shadow-[0_0_16px_rgba(0,240,255,0.3)]'
+              }`}
             title="Click to toggle Conversational Computer-Use Agent Mode"
           >
             {/* Headphone Avatar Circle */}
@@ -263,9 +306,8 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
 
             {/* Glowing Active Status Badge */}
             <span
-              className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-slate-950 ${
-                isComputerUseActive ? 'bg-cyan-400 animate-ping' : 'bg-emerald-400'
-              }`}
+              className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-slate-950 ${isComputerUseActive ? 'bg-cyan-400 animate-ping' : 'bg-emerald-400'
+                }`}
             />
           </button>
         </div>
@@ -298,9 +340,8 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
                 return (
                   <div
                     key={idx}
-                    className={`flex items-start gap-3.5 w-full animate-fadeIn group ${
-                      isUser ? 'justify-end' : 'justify-start'
-                    }`}
+                    className={`flex items-start gap-3.5 w-full animate-fadeIn group ${isUser ? 'justify-end' : 'justify-start'
+                      }`}
                   >
                     {!isUser && (
                       <div className="w-8 h-8 rounded-full bg-cyan-600/20 border border-cyan-400/40 text-cyan-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
@@ -309,11 +350,10 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
                     )}
 
                     <div
-                      className={`relative max-w-[85%] p-5 rounded-2xl text-sm sm:text-base leading-relaxed ${
-                        isUser
-                          ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-tr-sm shadow-md shadow-cyan-950/20'
-                          : 'bg-slate-900/90 border border-slate-800/90 text-slate-200 rounded-tl-sm shadow-sm'
-                      }`}
+                      className={`relative max-w-[85%] p-5 rounded-2xl text-sm sm:text-base leading-relaxed ${isUser
+                        ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-tr-sm shadow-md shadow-cyan-950/20'
+                        : 'bg-slate-900/90 border border-slate-800/90 text-slate-200 rounded-tl-sm shadow-sm'
+                        }`}
                     >
                       {/* Message Content or Edit Input */}
                       {isEditing ? (
@@ -384,11 +424,10 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
                                 {/* Voice symbol only */}
                                 <button
                                   onClick={() => handlePlayTTS(msg.content, idx)}
-                                  className={`p-1 rounded-lg hover:bg-slate-800 transition-all ${
-                                    isSpeaking && speakingMsgIdx === idx
-                                      ? 'text-cyan-400 bg-slate-800'
-                                      : 'text-slate-400 hover:text-cyan-300'
-                                  }`}
+                                  className={`p-1 rounded-lg hover:bg-slate-800 transition-all ${isSpeaking && speakingMsgIdx === idx
+                                    ? 'text-cyan-400 bg-slate-800'
+                                    : 'text-slate-400 hover:text-cyan-300'
+                                    }`}
                                   title={isSpeaking && speakingMsgIdx === idx ? 'Stop voice' : 'Listen voice'}
                                 >
                                   <Volume2 className={`w-3.5 h-3.5 ${isSpeaking && speakingMsgIdx === idx ? 'animate-pulse' : ''}`} />
@@ -413,106 +452,106 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
                 );
               })}
 
-            {isProcessing && (
-              <div className="flex items-start gap-3.5 justify-start animate-fadeIn w-full">
-                <div className="w-8 h-8 rounded-full bg-cyan-600/20 border border-cyan-400/40 text-cyan-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                  N
-                </div>
-                <div className="p-5 rounded-2xl rounded-tl-sm bg-slate-900/90 border border-slate-800 text-slate-300 text-xs sm:text-sm font-mono flex items-center gap-2.5">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                  <span>NexUs is thinking...</span>
-                </div>
-              </div>
-            )}
-
-            <div className="h-4" />
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-
-        {/* Dedicated Bottom Type-Bar Area (Non-overlapping flex sibling) */}
-        <div className="shrink-0 w-full pb-6 pt-3 px-4 bg-gradient-to-t from-[#070b14] via-[#070b14]/95 to-transparent z-30">
-          <div className="w-[70%] mx-auto relative">
-            {/* Attachment Preview Chips */}
-            {attachedFiles.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-2 animate-fadeIn">
-                {attachedFiles.map((file, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900 border border-cyan-500/40 text-xs text-cyan-300 shadow-md backdrop-blur-xl"
-                  >
-                    {file.type === 'image' ? <ImageIcon className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
-                    <span className="truncate max-w-[150px]">{file.name}</span>
-                    <button
-                      onClick={() => removeAttachedFile(i)}
-                      className="p-0.5 hover:text-rose-400 text-slate-400 ml-1"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
+              {isProcessing && (
+                <div className="flex items-start gap-3.5 justify-start animate-fadeIn w-full">
+                  <div className="w-8 h-8 rounded-full bg-cyan-600/20 border border-cyan-400/40 text-cyan-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                    N
                   </div>
-                ))}
-              </div>
-            )}
+                  <div className="p-5 rounded-2xl rounded-tl-sm bg-slate-900/90 border border-slate-800 text-slate-300 text-xs sm:text-sm font-mono flex items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                    <span>NexUs is thinking...</span>
+                  </div>
+                </div>
+              )}
 
-            {/* Add (+) Menu Popup: Add Image, Add File */}
-            {showAddMenu && (
-              <div
-                ref={addMenuRef}
-                className="absolute bottom-16 left-0 p-1.5 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl shadow-black flex flex-col gap-1 w-44 animate-fadeIn backdrop-blur-xl z-50"
-              >
-                <button
-                  onClick={() => imageInputRef.current?.click()}
-                  className="px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 hover:text-cyan-300 text-xs font-medium flex items-center gap-2.5 transition-all text-left"
+              <div className="h-4" />
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Dedicated Bottom Type-Bar Area (Non-overlapping flex sibling) */}
+          <div className="shrink-0 w-full pb-6 pt-3 px-4 bg-gradient-to-t from-[#070b14] via-[#070b14]/95 to-transparent z-30">
+            <div className="w-[70%] mx-auto relative">
+              {/* Attachment Preview Chips */}
+              {attachedFiles.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2 animate-fadeIn">
+                  {attachedFiles.map((file, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900 border border-cyan-500/40 text-xs text-cyan-300 shadow-md backdrop-blur-xl"
+                    >
+                      {file.type === 'image' ? <ImageIcon className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
+                      <span className="truncate max-w-[150px]">{file.name}</span>
+                      <button
+                        onClick={() => removeAttachedFile(i)}
+                        className="p-0.5 hover:text-rose-400 text-slate-400 ml-1"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add (+) Menu Popup: Add Image, Add File */}
+              {showAddMenu && (
+                <div
+                  ref={addMenuRef}
+                  className="absolute bottom-16 left-0 p-1.5 rounded-2xl bg-slate-900/95 border border-slate-700 shadow-2xl shadow-black flex flex-col gap-1 w-44 animate-fadeIn backdrop-blur-xl z-50"
                 >
-                  <ImageIcon className="w-4 h-4 text-cyan-400" />
-                  <span>Add Image</span>
-                </button>
+                  <button
+                    onClick={() => imageInputRef.current?.click()}
+                    className="px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 hover:text-cyan-300 text-xs font-medium flex items-center gap-2.5 transition-all text-left"
+                  >
+                    <ImageIcon className="w-4 h-4 text-cyan-400" />
+                    <span>Add Image</span>
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 hover:text-cyan-300 text-xs font-medium flex items-center gap-2.5 transition-all text-left"
+                  >
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <span>Add File</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Pill Input Bar */}
+              <div className="flex items-center gap-2.5 px-4 py-3 rounded-full bg-slate-900/95 border border-slate-700/80 focus-within:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-500/20 backdrop-blur-2xl shadow-2xl shadow-black/80 transition-all">
+                {/* Plus Button (+) */}
                 <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-2 rounded-xl hover:bg-slate-800 text-slate-200 hover:text-cyan-300 text-xs font-medium flex items-center gap-2.5 transition-all text-left"
+                  type="button"
+                  onClick={() => setShowAddMenu(!showAddMenu)}
+                  className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-cyan-300 transition-all shrink-0 focus:outline-none"
+                  title="Add Image / File"
                 >
-                  <FileText className="w-4 h-4 text-amber-400" />
-                  <span>Add File</span>
+                  <Plus className={`w-5 h-5 transition-transform duration-200 ${showAddMenu ? 'rotate-45 text-cyan-400' : ''}`} />
+                </button>
+
+                {/* Text Input */}
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask NexUs..."
+                  className="flex-1 bg-transparent text-slate-100 placeholder-slate-500 text-sm sm:text-base focus:outline-none px-2 py-1"
+                />
+
+                {/* Send Button (↑) */}
+                <button
+                  type="button"
+                  onClick={() => handleSend()}
+                  disabled={!inputMessage.trim() && attachedFiles.length === 0}
+                  className="w-9 h-9 rounded-full bg-cyan-400 hover:bg-cyan-300 disabled:opacity-30 disabled:hover:bg-cyan-400 text-slate-950 font-bold flex items-center justify-center transition-all shrink-0 shadow-md shadow-cyan-900/30 focus:outline-none"
+                  title="Send Message"
+                >
+                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
                 </button>
               </div>
-            )}
-
-            {/* Pill Input Bar */}
-            <div className="flex items-center gap-2.5 px-4 py-3 rounded-full bg-slate-900/95 border border-slate-700/80 focus-within:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-500/20 backdrop-blur-2xl shadow-2xl shadow-black/80 transition-all">
-              {/* Plus Button (+) */}
-              <button
-                type="button"
-                onClick={() => setShowAddMenu(!showAddMenu)}
-                className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-cyan-300 transition-all shrink-0 focus:outline-none"
-                title="Add Image / File"
-              >
-                <Plus className={`w-5 h-5 transition-transform duration-200 ${showAddMenu ? 'rotate-45 text-cyan-400' : ''}`} />
-              </button>
-
-              {/* Text Input */}
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask NexUs..."
-                className="flex-1 bg-transparent text-slate-100 placeholder-slate-500 text-sm sm:text-base focus:outline-none px-2 py-1"
-              />
-
-              {/* Send Button (↑) */}
-              <button
-                type="button"
-                onClick={() => handleSend()}
-                disabled={!inputMessage.trim() && attachedFiles.length === 0}
-                className="w-9 h-9 rounded-full bg-cyan-400 hover:bg-cyan-300 disabled:opacity-30 disabled:hover:bg-cyan-400 text-slate-950 font-bold flex items-center justify-center transition-all shrink-0 shadow-md shadow-cyan-900/30 focus:outline-none"
-                title="Send Message"
-              >
-                <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-              </button>
             </div>
           </div>
         </div>
-      </div>
       )}
     </div>
   );

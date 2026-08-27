@@ -38,8 +38,19 @@ const MainContent: React.FC = () => {
 
   const welcomeExecutedRef = useRef<boolean>(false);
 
+  const activeConversationIdRef = useRef<string | null>(activeConversationId);
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+
   // Central sendUserMessage for global voice / chat processing
-  const sendUserMessage = async (messageText: string, source: 'voice' | 'chat' = 'voice') => {
+  const sendUserMessage = async (messageText: string, source: 'voice' | 'chat' = 'voice', files: File[] = []) => {    // User voice-input feature is restricted strictly to Conversational Computer-Use Agent
+    if (source === 'voice' && !isComputerUseActive) {
+      console.log('[VOICE INPUT SKIPPED] Voice input is disabled for Simple Chatbot.');
+      return;
+    }
+
     const query = messageText.trim();
     if (!query) return;
 
@@ -51,6 +62,9 @@ const MainContent: React.FC = () => {
     cancelCurrentSpeech(`user_${source}_input`);
     console.log(`[TTS CANCELLED] turnId=${turnId}`);
     setProcessing(true);
+
+    const targetConvId = activeConversationIdRef.current;
+
 
     const userMsg: MessageItem = {
       role: 'user',
@@ -71,8 +85,11 @@ const MainContent: React.FC = () => {
     try {
       // 3. Send single request to AI
       console.log(`[FRONTEND API REQUEST] turnId=${turnId}`);
-      const res = await api.sendMessage(query, activeConversationId || undefined);
-
+      const res = await api.sendMessage(
+        query,
+        targetConvId || undefined,
+        files
+      );
       // 4. Validate that turnId is still active/latest
       if (turnId !== getCurrentTurnId()) {
         console.warn(`[STALE RESPONSE IGNORED] turnId=${turnId} activeTurnId=${getCurrentTurnId()}`);
@@ -81,8 +98,9 @@ const MainContent: React.FC = () => {
 
       console.log(`[AI RESPONSE RECEIVED] turnId=${turnId} response="${res.response}"`);
 
-      if (res.conversation_id && res.conversation_id !== activeConversationId) {
+      if (res.conversation_id) {
         setActiveConversationId(res.conversation_id);
+        activeConversationIdRef.current = res.conversation_id;
       }
 
       // 5. Display response text smoothly without auto TTS audio playback
@@ -167,15 +185,16 @@ const MainContent: React.FC = () => {
     sendUserMessageRef.current = sendUserMessage;
   });
 
-  // Register global transcript listener for continuous live speech detection
+  // User voice input is strictly for Conversational Computer-Use Agent. Unregister/ignore for simple chatbot.
   useEffect(() => {
+    if (!isComputerUseActive) return;
     const unregister = registerTranscriptHandler((transcriptText) => {
-      if (transcriptText && transcriptText.trim()) {
+      if (isComputerUseActive && transcriptText && transcriptText.trim()) {
         sendUserMessageRef.current(transcriptText, 'voice');
       }
     });
     return unregister;
-  }, [registerTranscriptHandler]);
+  }, [registerTranscriptHandler, isComputerUseActive]);
 
   // Session startup: Ready and idle until user provides first input
   useEffect(() => {
@@ -189,7 +208,13 @@ const MainContent: React.FC = () => {
       case 'dashboard':
         return <DashboardView />;
       case 'assistant':
-        return <SimpleChatbotView onSendMessage={(msg) => sendUserMessage(msg, 'chat')} />;
+        return (
+          <SimpleChatbotView
+            onSendMessage={(msg, files) =>
+              sendUserMessage(msg, 'chat', files)
+            }
+          />
+        );
       case 'computer_use':
         return <ConvoComputerUseAgentView />;
       case 'system':

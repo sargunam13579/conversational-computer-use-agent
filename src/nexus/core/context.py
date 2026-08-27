@@ -19,14 +19,18 @@ class ContextManager:
     """
     Manages the conversation context window.
 
-    Maintains a sliding window of messages and injects system context
+    Maintains the complete conversation history and injects system context
     (tools, memory, device state) into the prompt.
+
+    Messages are not automatically trimmed.
     """
 
     def __init__(self, max_turns: int = 20) -> None:
         """
         Args:
-            max_turns: Maximum number of user+assistant turn pairs to keep.
+            max_turns: Retained for backward compatibility.
+            Conversation messages are not automatically removed
+            when this limit is exceeded.
         """
         self._max_turns = max_turns
         self._messages: deque[LLMMessage] = deque()
@@ -47,19 +51,28 @@ class ContextManager:
 
     def add_user_message(self, content: str) -> None:
         """Add a user message to the context."""
-        self._messages.append(LLMMessage(role="user", content=content))
-        self._trim()
+        self._messages.append(
+            LLMMessage(role="user", content=content)
+        )
 
     def add_assistant_message(self, content: str) -> None:
         """Add an assistant response to the context."""
-        self._messages.append(LLMMessage(role="assistant", content=content))
-        self._trim()
+        self._messages.append(
+            LLMMessage(role="assistant", content=content)
+        )
 
     def add_tool_call_message(self, content: str) -> None:
         """Add an assistant message representing a tool call."""
-        self._messages.append(LLMMessage(role="assistant", content=content))
+        self._messages.append(
+            LLMMessage(role="assistant", content=content)
+        )
 
-    def add_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> None:
+    def add_tool_result(
+        self,
+        tool_call_id: str,
+        tool_name: str,
+        result: str,
+    ) -> None:
         """Add a tool result message to the context."""
         self._messages.append(
             LLMMessage(
@@ -75,12 +88,21 @@ class ContextManager:
         Build the full message list for the LLM, including system prompt.
 
         Returns:
-            List starting with the system prompt, followed by conversation history.
+            List starting with the system prompt,
+            followed by the complete conversation history.
         """
         messages = []
+
         if self._system_prompt:
-            messages.append(LLMMessage(role="system", content=self._system_prompt))
+            messages.append(
+                LLMMessage(
+                    role="system",
+                    content=self._system_prompt,
+                )
+            )
+
         messages.extend(self._messages)
+
         return messages
 
     def clear(self) -> None:
@@ -88,18 +110,22 @@ class ContextManager:
         self._messages.clear()
 
     def _trim(self) -> None:
-        """Trim the context to stay within the max turns limit."""
-        # Count user messages as "turns"
-        user_count = sum(1 for m in self._messages if m.role == "user")
-        while user_count > self._max_turns and self._messages:
-            removed = self._messages.popleft()
-            if removed.role == "user":
-                user_count -= 1
+        """
+        Retained for backward compatibility.
+
+        Automatic trimming is intentionally disabled so that
+        the complete conversation history remains available.
+        """
+        pass
 
     @property
     def turn_count(self) -> int:
         """Number of user turns in the current context."""
-        return sum(1 for m in self._messages if m.role == "user")
+        return sum(
+            1
+            for m in self._messages
+            if m.role == "user"
+        )
 
     @property
     def message_count(self) -> int:
@@ -108,7 +134,12 @@ class ContextManager:
 
     def get_recent_turns(self, count: int = 5) -> list[str]:
         """Return list of recent user message contents."""
-        turns = [m.content for m in self._messages if m.role == "user"]
+        turns = [
+            m.content
+            for m in self._messages
+            if m.role == "user"
+        ]
+
         return turns[-count:]
 
     def get_last_user_message(self) -> str | None:
@@ -116,4 +147,5 @@ class ContextManager:
         for msg in reversed(self._messages):
             if msg.role == "user":
                 return msg.content
+
         return None

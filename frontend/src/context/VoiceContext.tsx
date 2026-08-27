@@ -352,6 +352,14 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // 2. Stop browser speechSynthesis
+    if (activeUtteranceRef.current) {
+      try {
+        activeUtteranceRef.current.onend = null;
+        activeUtteranceRef.current.onerror = null;
+      } catch {
+        // ignore
+      }
+    }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try {
         window.speechSynthesis.cancel();
@@ -371,7 +379,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     cancelCurrentSpeech('stop_request');
   }, [cancelCurrentSpeech]);
 
-  const startContinuousListeningRef = useRef<() => void>(() => {});
+  const startContinuousListeningRef = useRef<() => void>(() => { });
 
   const startContinuousListening = useCallback(() => {
     if (!voiceModeEnabledRef.current) return;
@@ -819,7 +827,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
           const utterance = new SpeechSynthesisUtterance(cleanSpoken);
           const rawVoices = window.speechSynthesis.getVoices() || [];
-          
+
           // Select the same high-quality natural voice consistently for all greetings and replies
           let matchedVoice: SpeechSynthesisVoice | undefined;
           const preferredName = selectedVoiceNameRef.current;
@@ -871,14 +879,15 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           };
           utterance.onerror = (e) => {
-            if (e.error !== 'canceled' && e.error !== 'interrupted') {
+            const isCanceled = e.error === 'canceled' || e.error === 'interrupted';
+            if (!isCanceled) {
               console.warn('speakInstant error:', e);
             }
             isSpeakingRef.current = false;
             activeUtteranceRef.current = null;
             (window as any).__nexus_active_utterance = null;
-            if (onEnd) onEnd();
-            if (voiceModeEnabledRef.current && !isProcessingRef.current) {
+            if (onEnd && !isCanceled) onEnd();
+            if (!isCanceled && voiceModeEnabledRef.current && !isProcessingRef.current) {
               setVoiceState('listening');
               setTimeout(() => {
                 if (startContinuousListeningRef.current) {

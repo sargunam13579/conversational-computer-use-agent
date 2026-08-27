@@ -69,6 +69,7 @@ class Orchestrator:
         user_input: str,
         tier: ModelTier = ModelTier.FAST,
         show_thinking: bool = True,
+        allow_tools: bool = True,
     ) -> str:
         """
         Process a user input through the full agentic loop.
@@ -77,6 +78,7 @@ class Orchestrator:
             user_input: The user's message or command.
             tier: Which model tier to use for this request.
             show_thinking: Whether to print thinking steps in the terminal.
+            allow_tools: Whether system tools are allowed for this request.
 
         Returns:
             The final text response from NEXUS.
@@ -88,8 +90,8 @@ class Orchestrator:
         self._context.add_user_message(user_input)
 
         # Fast Path vs Tool Path determination
-        needs_tools = _requires_tools(user_input)
-        tool_schemas = self._registry.get_schemas() if needs_tools else None
+        needs_tools = allow_tools and _requires_tools(user_input)
+        tool_schemas = self._registry.get_schemas() if (allow_tools and needs_tools) else None
 
         # Emit event
         await self._event_bus.emit(
@@ -109,7 +111,16 @@ class Orchestrator:
 
             # Send to LLM (offer tools only on first pass if tools are needed)
             active_tools = tool_schemas if (tool_schemas and iteration == 0) else None
-            messages = self._context.get_messages()
+            if not allow_tools:
+                from nexus.llm.prompts.system import get_simple_chatbot_prompt
+                from nexus.llm.providers.base import LLMMessage
+                chatbot_prompt = get_simple_chatbot_prompt()
+                messages = [LLMMessage(role="system", content=chatbot_prompt)] + [
+                    m for m in self._context.get_messages() if m.role != "system"
+                ]
+            else:
+                messages = self._context.get_messages()
+
             response = await self._router.generate(
                 messages=messages,
                 tier=tier,
@@ -118,7 +129,13 @@ class Orchestrator:
 
             # If the LLM returned a final text response (no tool calls), we're done
             if not response.has_tool_calls:
-                final_response = response.content or "I completed the task."
+                default_fallback = (
+                    "Enakku Simple Chatbot mode-il laptop applications/websites open seiya access illai. "
+                    "System/laptop access Conversational Computer-Use Agent-il (Headphone icon) mattum thaan irukku!"
+                    if not allow_tools
+                    else "I completed the task."
+                )
+                final_response = response.content or default_fallback
                 self._context.add_assistant_message(final_response)
                 self.last_tool_calls = executed_tools
 

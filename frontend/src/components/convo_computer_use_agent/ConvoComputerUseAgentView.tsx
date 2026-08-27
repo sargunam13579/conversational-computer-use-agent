@@ -54,10 +54,12 @@ export const ConvoComputerUseAgentView: React.FC = () => {
     speakInstant,
     stopSpeaking,
     setProcessing,
+    setVoiceModeEnabled,
   } = useVoice();
   const userName = identity?.user_name || 'Sargunam';
   const wasVoiceTriggered = useRef<boolean>(true);
   const [autoListen, setAutoListen] = useState<boolean>(true);
+  const isMountedRef = useRef<boolean>(true);
 
   const [inputMessage, setInputMessage] = useState('');
   const [steerText, setSteerText] = useState('');
@@ -77,10 +79,20 @@ export const ConvoComputerUseAgentView: React.FC = () => {
   const [liveScreenData, setLiveScreenData] = useState<any>(null);
   const [isLoadingScreen, setIsLoadingScreen] = useState(false);
 
+  // Track component mount lifecycle
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Helper to start listening for user voice input (works across all subsequent turns)
   const triggerVoiceListen = useCallback(() => {
+    if (!isMountedRef.current) return;
     wasVoiceTriggered.current = true;
     startListening((finalTranscript) => {
+      if (!isMountedRef.current) return;
       if (finalTranscript && finalTranscript.trim()) {
         const spokenText = finalTranscript.trim();
         if (isExecutingRef.current) {
@@ -98,7 +110,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
   useEffect(() => {
     if (computerUseMessages.length === 0) {
       speakInstant(`Welcome ${userName}! Naan ready. Sollunga, enna pannalam?`, () => {
-        if (autoListen) {
+        if (isMountedRef.current && autoListen) {
           triggerVoiceListen();
         }
       });
@@ -129,14 +141,15 @@ export const ConvoComputerUseAgentView: React.FC = () => {
   // Cleanup on unmount (when user switches view or returns to simple chat)
   useEffect(() => {
     return () => {
-      api.stopComputerUse().catch(() => {});
+      api.stopComputerUse().catch(() => { });
       stopSpeaking();
       stopListening();
+      setVoiceModeEnabled(false);
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [stopSpeaking, stopListening]);
+  }, [stopSpeaking, stopListening, setVoiceModeEnabled]);
 
   // Poll status when executing
   useEffect(() => {
@@ -187,12 +200,41 @@ export const ConvoComputerUseAgentView: React.FC = () => {
     }
   };
 
+  const computerUseConversationIdRef = useRef<string | null>(computerUseConversationId);
+  useEffect(() => {
+    computerUseConversationIdRef.current = computerUseConversationId;
+  }, [computerUseConversationId]);
+
+  const isNewChatIntent = (text: string) => {
+    const lower = text.toLowerCase().trim();
+    const keywords = [
+      'new chat',
+      'open new chat',
+      'start new chat',
+      'create new chat',
+      'new chat open',
+      'new chat start',
+      'new conversation',
+      'open a new chat',
+      'start a new chat',
+    ];
+    return keywords.some((kw) => lower.includes(kw));
+  };
+
   const handleSend = async (customGoal?: string, fromVoice = false) => {
     const goal = (customGoal || inputMessage).trim();
     if (!goal || isExecuting) return;
 
     if (fromVoice) {
       wasVoiceTriggered.current = true;
+    }
+
+    let targetConvId = computerUseConversationIdRef.current;
+    if (isNewChatIntent(goal)) {
+      targetConvId = null;
+      setComputerUseConversationId(null);
+      computerUseConversationIdRef.current = null;
+      setComputerUseMessages([]);
     }
 
     setInputMessage('');
@@ -223,11 +265,12 @@ export const ConvoComputerUseAgentView: React.FC = () => {
         goal,
         20,
         true,
-        computerUseConversationId || undefined
+        targetConvId || undefined
       );
 
-      if (res.conversation_id && res.conversation_id !== computerUseConversationId) {
+      if (res.conversation_id) {
         setComputerUseConversationId(res.conversation_id);
+        computerUseConversationIdRef.current = res.conversation_id;
       }
 
       if (res.history) {
@@ -423,11 +466,10 @@ export const ConvoComputerUseAgentView: React.FC = () => {
                 stopListening();
               }
             }}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono transition-all border ${
-              autoListen
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono transition-all border ${autoListen
                 ? 'bg-cyan-950/60 border-cyan-400/60 text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.25)]'
                 : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
             title="Toggle Hands-Free Continuous Voice Conversation"
           >
             <Mic className={`w-3.5 h-3.5 ${autoListen ? 'text-cyan-400 animate-pulse' : 'text-slate-500'}`} />
@@ -618,9 +660,8 @@ export const ConvoComputerUseAgentView: React.FC = () => {
             return (
               <div
                 key={idx}
-                className={`flex items-start gap-3.5 w-full animate-fadeIn group ${
-                  isUser ? 'justify-end' : 'justify-start'
-                }`}
+                className={`flex items-start gap-3.5 w-full animate-fadeIn group ${isUser ? 'justify-end' : 'justify-start'
+                  }`}
               >
                 {!isUser && (
                   <div className="w-8 h-8 rounded-full bg-cyan-600/20 border border-cyan-400/40 text-cyan-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
@@ -629,11 +670,10 @@ export const ConvoComputerUseAgentView: React.FC = () => {
                 )}
 
                 <div
-                  className={`relative max-w-[85%] p-5 rounded-2xl text-sm sm:text-base leading-relaxed ${
-                    isUser
+                  className={`relative max-w-[85%] p-5 rounded-2xl text-sm sm:text-base leading-relaxed ${isUser
                       ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-tr-sm shadow-md shadow-cyan-950/20'
                       : 'bg-slate-900/90 border border-slate-800/90 text-slate-200 rounded-tl-sm shadow-sm'
-                  }`}
+                    }`}
                 >
                   {/* Message Content or Edit Input */}
                   {isEditing ? (
@@ -747,17 +787,15 @@ export const ConvoComputerUseAgentView: React.FC = () => {
 
                         <button
                           onClick={() => handlePlayTTS(msg.content, idx)}
-                          className={`p-1 rounded-lg hover:bg-slate-800 transition-all ${
-                            isSpeaking && speakingMsgIdx === idx
+                          className={`p-1 rounded-lg hover:bg-slate-800 transition-all ${isSpeaking && speakingMsgIdx === idx
                               ? 'text-cyan-400 bg-slate-800'
                               : 'text-slate-400 hover:text-cyan-300'
-                          }`}
+                            }`}
                           title={isSpeaking && speakingMsgIdx === idx ? 'Stop voice' : 'Listen voice'}
                         >
                           <Volume2
-                            className={`w-3.5 h-3.5 ${
-                              isSpeaking && speakingMsgIdx === idx ? 'animate-pulse' : ''
-                            }`}
+                            className={`w-3.5 h-3.5 ${isSpeaking && speakingMsgIdx === idx ? 'animate-pulse' : ''
+                              }`}
                           />
                         </button>
                       </div>
@@ -879,9 +917,8 @@ export const ConvoComputerUseAgentView: React.FC = () => {
               title="Preset Recipes"
             >
               <Plus
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  showAddMenu ? 'rotate-45 text-cyan-400' : ''
-                }`}
+                className={`w-5 h-5 transition-transform duration-200 ${showAddMenu ? 'rotate-45 text-cyan-400' : ''
+                  }`}
               />
             </button>
 
@@ -901,11 +938,10 @@ export const ConvoComputerUseAgentView: React.FC = () => {
               type="button"
               onClick={handleToggleMic}
               disabled={isExecuting}
-              className={`relative px-3.5 py-2 rounded-full flex items-center gap-2 transition-all shrink-0 focus:outline-none ${
-                isListening
+              className={`relative px-3.5 py-2 rounded-full flex items-center gap-2 transition-all shrink-0 focus:outline-none ${isListening
                   ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-[0_0_20px_rgba(244,63,94,0.6)] scale-105 ring-2 ring-rose-300 animate-pulse'
                   : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold shadow-[0_0_16px_rgba(0,240,255,0.4)] hover:scale-105'
-              }`}
+                }`}
               title={isListening ? 'Listening live... Tap to mute' : 'Tap to speak voice command'}
             >
               <Mic className={`w-4 h-4 ${isListening ? 'text-white animate-bounce' : 'text-slate-950'}`} />
