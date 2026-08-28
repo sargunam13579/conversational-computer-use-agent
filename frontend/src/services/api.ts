@@ -15,6 +15,8 @@ import type {
   DeviceNode,
 } from '../types';
 
+import { supabase } from './supabase';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 const apiClient = axios.create({
@@ -23,6 +25,14 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 45000,
+});
+
+apiClient.interceptors.request.use(async (config) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+  }
+  return config;
 });
 
 export const api = {

@@ -150,6 +150,11 @@ class SecuritySettings(BaseSettings):
     audit_enabled: bool = True
     encryption_enabled: bool = False
     permissions: SecurityPermissionSettings = Field(default_factory=SecurityPermissionSettings)
+    # Supabase Auth
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_jwt_secret: str = ""
+    supabase_service_role_key: str = ""
 
 
 class LaptopAgentSettings(BaseSettings):
@@ -209,12 +214,16 @@ class NexusSettings(BaseSettings):
     ui: UISettings = Field(default_factory=UISettings)
     api: APISettings = Field(default_factory=APISettings)
 
-    # API keys (loaded from env)
+    # API keys & Cloud services (loaded from env)
     gemini_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     deepgram_api_key: str = ""
     elevenlabs_api_key: str = ""
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_jwt_secret: str = ""
+    supabase_service_role_key: str = ""
 
     @property
     def resolved_data_dir(self) -> Path:

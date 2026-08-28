@@ -23,6 +23,8 @@ dependencies = [
     "tomli>=2.0.0; python_version < '3.11'",
     "tomli-w>=1.0.0",
     "python-dotenv>=1.0.0",
+    "pyjwt>=2.8.0",
+    "cryptography>=42.0.0",
 
     # Database
     "sqlalchemy[asyncio]>=2.0.0",

@@ -19,6 +19,7 @@ from nexus.api.middleware import ErrorHandlerMiddleware, RequestIdMiddleware
 from nexus.api.routes import (
     accessibility_api,
     android,
+    auth,
     automation,
     browser,
     chat,
@@ -151,6 +152,7 @@ def create_app(settings: NexusSettings | None = None) -> FastAPI:
     prefix = settings.api.api_prefix
 
     app.include_router(health.router, prefix=prefix)
+    app.include_router(auth.router, prefix=prefix)
     app.include_router(chat.router, prefix=prefix)
     app.include_router(conversations.router, prefix=prefix)
     app.include_router(voice.router, prefix=prefix)
