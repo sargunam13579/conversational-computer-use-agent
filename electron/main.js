@@ -45,7 +45,8 @@ function spawnBackend() {
       backendProcess = spawn(backendPath, args, {
         cwd: path.join(__dirname, '..'),
         stdio: 'inherit',
-        shell: true
+        shell: true,
+        windowsHide: true
       });
 
       backendProcess.on('error', (err) => {
