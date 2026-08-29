@@ -40,7 +40,10 @@
       "allowToChangeInstallationDirectory": true
     },
     "appx": {
-      "publisherDisplayName": "SARGUNAM K"
+      "publisherDisplayName": "SARGUNAM K",
+      "publisher": "CN=2FDF5732-8711-4493-BFEE-182F498E2D65",
+      "identityName": "NexusAI.SeyalAI",
+      "applicationId": "NexusAI"
     }
   }
 }
