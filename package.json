@@ -2,7 +2,7 @@
   "name": "nexus",
   "version": "0.1.0",
   "description": "NEXUS AI — Autonomous Agentic Desktop Application",
-  "author": "SARGUNAM",
+  "author": "SARGUNAM K",
   "main": "electron/main.js",
   "scripts": {
     "dev:frontend": "npm --prefix frontend run dev",
@@ -38,6 +38,9 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "appx": {
+      "publisherDisplayName": "SARGUNAM K"
     }
   }
 }
