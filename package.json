@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "com.nexus.ai.desktop",
-    "productName": "Nexus AI",
+    "productName": "Seyal AI",
     "directories": {
       "output": "dist"
     },
