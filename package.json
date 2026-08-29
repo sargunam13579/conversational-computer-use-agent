@@ -1,0 +1,42 @@
+{
+  "name": "nexus-desktop",
+  "version": "0.1.0",
+  "description": "NEXUS AI — Autonomous Agentic Desktop Application",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": ".\\.venv\\Scripts\\python.exe -m nexus.main --mode api",
+    "dev": "concurrently -n \"frontend,backend,electron\" -c \"cyan,green,blue\" \"npm run dev:frontend\" \"npm run dev:backend\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "build:frontend": "npm --prefix frontend run build",
+    "package": "npm run build:frontend && electron-builder build --win"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.nexus.ai.desktop",
+    "productName": "Nexus AI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "msix"
+      ],
+      "icon": "frontend/public/vite.svg"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
