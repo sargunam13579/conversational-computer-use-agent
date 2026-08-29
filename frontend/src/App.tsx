@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NexusProvider, useNexus } from './context/NexusContext';
 import { VoiceProvider, useVoice } from './context/VoiceContext';
 import { Header } from './components/layout/Header';
@@ -266,21 +266,77 @@ const MainContent: React.FC = () => {
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginPage } from './components/auth/LoginPage';
+import { ProfileSetupPage } from './components/auth/ProfileSetupPage';
 
 const AuthenticatedApp: React.FC = () => {
   const { session, loading } = useAuth();
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSetupRequired, setProfileSetupRequired] = useState(false);
 
-  if (loading) {
+  useEffect(() => {
+    if (!session) {
+      setProfileLoading(false);
+      return;
+    }
+
+    const checkAndSyncProfile = async () => {
+      try {
+        setProfileLoading(true);
+        const res = await api.getProfile();
+
+        if (res.setup_required) {
+          // If setup is required in PostgreSQL, check if we have user metadata from signup
+          const metadata = session.user?.user_metadata;
+          if (metadata && metadata.name && metadata.age && metadata.gender) {
+            try {
+              // Silently sync metadata to backend PostgreSQL
+              await api.setupProfile({
+                name: metadata.name,
+                age: Number(metadata.age),
+                gender: metadata.gender,
+              });
+              setProfileSetupRequired(false);
+            } catch (syncErr) {
+              console.error('Failed to sync signup metadata to backend:', syncErr);
+              setProfileSetupRequired(true);
+            }
+          } else {
+            setProfileSetupRequired(true);
+          }
+        } else {
+          setProfileSetupRequired(false);
+        }
+      } catch (err) {
+        console.error('Failed to fetch profile:', err);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    checkAndSyncProfile();
+  }, [session]);
+
+  if (loading || (session && profileLoading)) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#060911] text-slate-100 font-sans">
         <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-sm font-medium text-slate-400">Connecting to Nexus Auth...</p>
+        <p className="text-sm font-medium text-slate-400">
+          {loading ? 'Connecting to Nexus Auth...' : 'Loading User Profile...'}
+        </p>
       </div>
     );
   }
 
   if (!session) {
     return <LoginPage />;
+  }
+
+  if (profileSetupRequired) {
+    return (
+      <ProfileSetupPage
+        onComplete={() => setProfileSetupRequired(false)}
+      />
+    );
   }
 
   return (

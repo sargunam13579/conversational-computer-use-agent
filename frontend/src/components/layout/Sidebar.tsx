@@ -9,8 +9,15 @@ import {
   Trash2,
   Check,
   X,
+  LogOut,
+  Sparkles,
+  Sliders,
+  Settings,
+  HelpCircle,
+  ChevronRight,
 } from 'lucide-react';
 import { useNexus } from '../../context/NexusContext';
+import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import type { ConversationSummary } from '../../types';
 
@@ -29,7 +36,28 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     resetChatContext,
     messages,
     setMessages,
+    setActiveView,
   } = useNexus();
+
+  const { signOut, user } = useAuth();
+
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close profile dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    if (profileMenuOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [profileMenuOpen]);
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => {
@@ -85,6 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = () => {
   const handleSelectConversation = async (convId: string) => {
     if (renamingConvId === convId) return;
     setActiveConversationId(convId);
+    setActiveView('assistant');
     try {
       const detail = await api.getConversation(convId);
       if (detail && detail.messages) {
@@ -176,7 +205,7 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     return displayTitle.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
-  const userName = identity?.user_name || 'Sargunam';
+  const userName = identity?.user_name || '';
 
   return (
     <aside className="w-64 glass-panel rounded-none border-t-0 border-l-0 border-b-0 border-r border-cyan-500/20 flex flex-col justify-between py-4 px-2 select-none bg-slate-950/85 backdrop-blur-2xl shrink-0 h-full">
@@ -248,11 +277,10 @@ export const Sidebar: React.FC<SidebarProps> = () => {
             return (
               <div
                 key={conv.id}
-                className={`relative w-full rounded-2xl group transition-all duration-200 border my-2 mx-0.5 ${
-                  isActive
-                    ? 'bg-cyan-500/15 text-cyan-200 border-cyan-500/50 shadow-md shadow-cyan-950/25 ring-1 ring-cyan-500/30'
-                    : 'bg-slate-900/50 hover:bg-slate-900/90 border-slate-800/90 hover:border-slate-700 text-slate-300 hover:text-white shadow-sm'
-                }`}
+                className={`relative w-full rounded-2xl group transition-all duration-200 border my-2 mx-0.5 ${isActive
+                  ? 'bg-cyan-500/15 text-cyan-200 border-cyan-500/50 shadow-md shadow-cyan-950/25 ring-1 ring-cyan-500/30'
+                  : 'bg-slate-900/50 hover:bg-slate-900/90 border-slate-800/90 hover:border-slate-700 text-slate-300 hover:text-white shadow-sm'
+                  }`}
               >
                 {isRenaming ? (
                   /* Inline Rename Input */
@@ -307,11 +335,10 @@ export const Sidebar: React.FC<SidebarProps> = () => {
                           e.stopPropagation();
                           setMenuOpenConvId(isMenuOpen ? null : conv.id);
                         }}
-                        className={`p-1.5 rounded-lg transition-all ${
-                          isMenuOpen
-                            ? 'bg-slate-800 text-cyan-300 border border-cyan-500/30'
-                            : 'text-slate-400 hover:text-white hover:bg-slate-800/80 group-hover:opacity-100 opacity-60'
-                        }`}
+                        className={`p-1.5 rounded-lg transition-all ${isMenuOpen
+                          ? 'bg-slate-800 text-cyan-300 border border-cyan-500/30'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/80 group-hover:opacity-100 opacity-60'
+                          }`}
                         title="Chat options"
                       >
                         <MoreVertical className="w-3.5 h-3.5" />
@@ -362,6 +389,7 @@ export const Sidebar: React.FC<SidebarProps> = () => {
           onClick={async () => {
             await resetChatContext();
             loadConversations();
+            setActiveView('assistant');
           }}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-cyan-600/20 hover:bg-cyan-600/35 border border-cyan-500/40 hover:border-cyan-400 text-cyan-200 font-semibold text-xs tracking-wider transition-all shadow-sm shadow-cyan-950/30"
         >
@@ -369,14 +397,97 @@ export const Sidebar: React.FC<SidebarProps> = () => {
           <span>{isComputerUseActive ? 'New Agent Task' : 'New Chat'}</span>
         </button>
 
-        {/* User Profile Avatar Circle */}
-        <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-slate-900/60 border border-slate-800/70">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white font-bold text-xs border border-cyan-300/40 shadow-sm shrink-0">
-            {userName.charAt(0).toUpperCase()}
-          </div>
-          <div className="flex flex-col truncate flex-1">
-            <span className="text-xs font-semibold text-slate-200 truncate">{userName}</span>
-            <span className="text-[10px] font-mono text-cyan-400">Online • Active</span>
+        {/* User Profile Pop-up Menu Trigger & Menu Box */}
+        <div ref={profileMenuRef} className="relative">
+          {/* Pop-up Menu */}
+          {profileMenuOpen && (
+            <div className="absolute bottom-full left-0 mb-2 w-60 bg-slate-950/95 border border-slate-800/80 rounded-xl p-3 shadow-2xl z-50 animate-fade-in space-y-2 backdrop-blur-xl">
+              {/* Header profile info */}
+              <div className="flex items-center gap-2.5 p-2 border-b border-slate-800/80 pb-3">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white font-bold text-xs border border-cyan-300/40 shadow-sm shrink-0">
+                  {userName ? userName.charAt(0).toUpperCase() : 'U'}
+                </div>
+                <div className="flex flex-col truncate flex-grow">
+                  <span className="text-xs font-semibold text-slate-200 truncate">{userName || 'User'}</span>
+                  <span className="text-[10px] text-slate-500 truncate">{user?.email || 'dev@nexus.local'}</span>
+                  <span className="text-[10px] font-semibold text-cyan-400 mt-0.5">Free</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+              </div>
+
+              {/* Menu Actions */}
+              <div className="space-y-1 py-1">
+                <button
+                  onClick={() => setProfileMenuOpen(false)}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-900 rounded-lg transition-all text-left"
+                >
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  <span>Upgrade plan</span>
+                </button>
+
+                <button
+                  onClick={() => setProfileMenuOpen(false)}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-900 rounded-lg transition-all text-left"
+                >
+                  <Sliders className="w-4 h-4 text-indigo-400" />
+                  <span>Personalization</span>
+                </button>
+
+
+
+                <button
+                  onClick={() => {
+                    setProfileMenuOpen(false);
+                    setActiveView('settings');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-900 rounded-lg transition-all text-left"
+                >
+                  <Settings className="w-4 h-4 text-slate-400" />
+                  <span>Settings</span>
+                </button>
+
+                <button
+                  onClick={() => setProfileMenuOpen(false)}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-900 rounded-lg transition-all text-left"
+                >
+                  <HelpCircle className="w-4 h-4 text-slate-400" />
+                  <span>Help</span>
+                </button>
+              </div>
+
+              {/* Logout button */}
+              <div className="border-t border-slate-800/80 pt-2">
+                <button
+                  onClick={() => {
+                    setProfileMenuOpen(false);
+                    signOut();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 rounded-lg transition-all text-left"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Log out</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* User Profile Avatar Footer Circle */}
+          <div
+            onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+            className="flex items-center justify-between px-2.5 py-2 rounded-xl bg-slate-900/60 hover:bg-slate-900/90 border border-slate-800/70 hover:border-slate-700 transition-all cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-2.5 truncate">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white font-bold text-xs border border-cyan-300/40 shadow-sm shrink-0">
+                {userName ? userName.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <div className="flex flex-col truncate">
+                <span className="text-xs font-semibold text-slate-200 truncate">{userName || 'User'}</span>
+                <span className="text-[10px] font-mono text-cyan-400">Online • Active</span>
+              </div>
+            </div>
+            <div className="flex items-center text-slate-500 hover:text-white transition-all mr-0.5">
+              <ChevronRight className="w-4 h-4 transform rotate-90" />
+            </div>
           </div>
         </div>
       </div>

@@ -21,13 +21,14 @@ export type NavView =
   | 'activity'
   | 'settings';
 
-export const getWelcomeGreetingText = (userName = 'Sargunam'): string => {
-  const displayUser = userName && userName.trim() && userName !== 'User' ? userName.trim() : 'Sargunam';
-  return `Hey ${displayUser}! Welcome back da. Naan ready. Sollu, enna pannalam?`;
+export const getWelcomeGreetingText = (userName = 'User'): string => {
+  const displayUser = userName && userName.trim() ? userName.trim() : 'User';
+  return `Hey ${displayUser}! Welcome back. Naan ready. Sollunga, enna pannalam?`;
 };
 
-export const createWelcomeMessage = (userName = 'Sargunam', _assistantName = 'JARVIS'): MessageItem => {
+export const createWelcomeMessage = (userName = 'User', _assistantName = 'JARVIS'): MessageItem => {
   return {
+    id: 'welcome-message',
     role: 'assistant',
     content: getWelcomeGreetingText(userName),
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -241,7 +242,7 @@ export const NexusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       status: 'error',
     });
     // Attempt resetting chat or canceling any confirmation
-    api.cancelPendingConfirmation().catch(() => {});
+    api.cancelPendingConfirmation().catch(() => { });
   };
 
   const resetChatContext = async () => {

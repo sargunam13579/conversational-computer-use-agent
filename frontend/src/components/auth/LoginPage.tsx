@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Mail, Lock, ArrowRight, ShieldCheck, Cpu, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ShieldCheck, Cpu, AlertCircle, CheckCircle2, User, Calendar } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const { signIn, signUp } = useAuth();
@@ -8,6 +8,9 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
+  const [gender, setGender] = useState('male');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -22,9 +25,20 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
-    if (isSignUp && password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
+    if (isSignUp) {
+      if (!name.trim()) {
+        setError('Please enter your full name.');
+        return;
+      }
+      const parsedAge = parseInt(age, 10);
+      if (isNaN(parsedAge) || parsedAge < 1 || parsedAge > 120) {
+        setError('Please enter a valid age between 1 and 120.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
     }
 
     if (password.length < 6) {
@@ -36,11 +50,16 @@ export const LoginPage: React.FC = () => {
 
     try {
       if (isSignUp) {
-        const { error: signUpError } = await signUp(email, password);
+        const { error: signUpError } = await signUp(email, password, {
+          name: name.trim(),
+          age: parseInt(age, 10),
+          gender,
+        });
         if (signUpError) {
           setError(signUpError.message);
         } else {
-          setMessage('Account created! Please check your email for confirmation or sign in.');
+          setMessage('Account created! Please sign in with your credentials.');
+          setIsSignUp(false); // Switch to sign in view
         }
       } else {
         const { error: signInError } = await signIn(email, password);
@@ -153,22 +172,77 @@ export const LoginPage: React.FC = () => {
           </div>
 
           {isSignUp && (
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition-all"
-                />
+            <>
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="John Doe"
+                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition-all"
+                  />
+                </div>
               </div>
-            </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Age
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max="120"
+                      value={age}
+                      onChange={(e) => setAge(e.target.value)}
+                      placeholder="25"
+                      className="w-full bg-slate-950/80 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Gender
+                  </label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 transition-all cursor-pointer"
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 transition-all"
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           <button

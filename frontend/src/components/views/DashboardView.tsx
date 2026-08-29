@@ -52,7 +52,7 @@ export const DashboardView: React.FC = () => {
   };
 
   const assistantName = identity?.assistant_name || 'JARVIS';
-  const userName = identity?.user_name && identity.user_name !== 'User' ? identity.user_name : 'Sargunam';
+  const userName = identity?.user_name || 'User';
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
@@ -72,7 +72,7 @@ export const DashboardView: React.FC = () => {
             </h2>
 
             <p className="font-sans text-sm text-slate-300 max-w-2xl leading-relaxed">
-              I am <strong className="text-cyan-300 font-tech uppercase">{assistantName}</strong>, your always-live AI companion. 
+              I am <strong className="text-cyan-300 font-tech uppercase">{assistantName}</strong>, your always-live AI companion.
               Standing by for natural hands-free voice conversation, workflow automation, and workstation orchestration.
             </p>
 

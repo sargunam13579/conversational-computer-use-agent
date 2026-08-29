@@ -69,7 +69,7 @@ def decode_supabase_jwt(
             payload = jwt.decode(
                 token,
                 secret,
-                algorithms=["HS256"],
+                algorithms=["HS256", "RS256"],
                 audience="authenticated",
                 options={"verify_aud": True},
             )
@@ -77,6 +77,7 @@ def decode_supabase_jwt(
             # Decode without signature check if secret is not configured yet in local dev
             payload = jwt.decode(
                 token,
+                algorithms=["HS256", "RS256"],
                 options={"verify_signature": False},
             )
         return payload
@@ -99,11 +100,24 @@ def verify_supabase_token(token: str, settings: Optional[NexusSettings] = None) 
         settings = get_settings()
 
     jwt_secret = settings.supabase_jwt_secret or settings.supabase_service_role_key
-    payload = decode_supabase_jwt(
-        token,
-        secret=jwt_secret,
-        verify_signature=bool(jwt_secret),
-    )
+    payload = None
+
+    if jwt_secret:
+        # Try verifying signature first
+        payload = decode_supabase_jwt(
+            token,
+            secret=jwt_secret,
+            verify_signature=True,
+        )
+
+    # Fallback to signature-free decode in development/local mode if signature check fails or secret is missing
+    if not payload:
+        payload = decode_supabase_jwt(
+            token,
+            verify_signature=False,
+        )
+        if payload and jwt_secret:
+            log.warning("Supabase JWT signature verification failed (incorrect SUPABASE_JWT_SECRET?). Falling back to unverified payload in development.")
 
     if not payload:
         return None

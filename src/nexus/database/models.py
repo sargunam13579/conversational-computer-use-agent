@@ -24,7 +24,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _utcnow() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _new_id() -> str:
@@ -49,6 +49,8 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     voice_profile_path: Mapped[str | None] = mapped_column(String(500))
     pin_hash: Mapped[str | None] = mapped_column(String(256))
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     # Relationships

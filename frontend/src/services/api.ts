@@ -309,4 +309,38 @@ export const api = {
     const { data } = await apiClient.post('/computer-use/action', payload);
     return data;
   },
+
+  async getProfile(): Promise<{
+    setup_required: boolean;
+    user_id: string;
+    email?: string;
+    profile?: {
+      user_id: string;
+      email: string;
+      name: string;
+      age: number;
+      gender: string;
+    };
+  }> {
+    const { data } = await apiClient.get('/profile/me');
+    return data;
+  },
+
+  async setupProfile(payload: {
+    name: string;
+    age: number;
+    gender: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    profile: {
+      user_id: string;
+      name: string;
+      age: number;
+      gender: string;
+    };
+  }> {
+    const { data } = await apiClient.post('/profile/setup', payload);
+    return data;
+  },
 };

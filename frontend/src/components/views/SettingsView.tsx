@@ -32,8 +32,13 @@ export const SettingsView: React.FC = () => {
   const [nameChangeStatus, setNameChangeStatus] = useState<string | null>(null);
   const [isChangingName, setIsChangingName] = useState(false);
 
-  // User name state
+  // User profile details state
   const [userNameInput, setUserNameInput] = useState(identity?.user_name || '');
+  const [userAgeInput, setUserAgeInput] = useState('');
+  const [userGenderInput, setUserGenderInput] = useState('male');
+  const [fetchingProfile, setFetchingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
   // Alias state
   const [newAlias, setNewAlias] = useState('');
@@ -44,10 +49,27 @@ export const SettingsView: React.FC = () => {
   const [voicePipelineActive, setVoicePipelineActive] = useState(false);
   const [isTestingVoice, setIsTestingVoice] = useState(false);
 
+  // Fetch current database profile on mount/identity load
   useEffect(() => {
-    if (identity) {
-      setUserNameInput(identity.user_name || '');
-    }
+    const fetchProfile = async () => {
+      setFetchingProfile(true);
+      try {
+        const res = await api.getProfile();
+        if (!res.setup_required && res.profile) {
+          setUserNameInput(res.profile.name || '');
+          setUserAgeInput(res.profile.age?.toString() || '');
+          setUserGenderInput(res.profile.gender || 'male');
+        } else {
+          setUserNameInput(identity?.user_name || '');
+        }
+      } catch (err) {
+        console.warn('Failed to load profile details in settings:', err);
+        setUserNameInput(identity?.user_name || '');
+      } finally {
+        setFetchingProfile(false);
+      }
+    };
+    fetchProfile();
   }, [identity]);
 
   useEffect(() => {
@@ -85,18 +107,42 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  const handleUpdateUserName = async () => {
+  const handleUpdateUserProfile = async () => {
+    setProfileMessage(null);
+    const parsedAge = parseInt(userAgeInput, 10);
+    if (!userNameInput.trim()) {
+      setProfileMessage({ text: 'Please enter your name.', isError: true });
+      return;
+    }
+    if (isNaN(parsedAge) || parsedAge < 1 || parsedAge > 120) {
+      setProfileMessage({ text: 'Please enter a valid age between 1 and 120.', isError: true });
+      return;
+    }
+
+    setSavingProfile(true);
     try {
-      await api.updateIdentity({ user_name: userNameInput.trim() });
-      addActivity({
-        type: 'identity',
-        title: 'Operator Name Updated',
-        detail: `User name updated to '${userNameInput}'`,
-        status: 'success',
+      const res = await api.setupProfile({
+        name: userNameInput.trim(),
+        age: parsedAge,
+        gender: userGenderInput,
       });
-      await refreshState();
+
+      if (res.success) {
+        setProfileMessage({ text: 'Profile updated successfully!', isError: false });
+        addActivity({
+          type: 'identity',
+          title: 'Operator Profile Updated',
+          detail: `User profile updated (Name: ${userNameInput.trim()}, Age: ${parsedAge}, Gender: ${userGenderInput})`,
+          status: 'success',
+        });
+        await refreshState();
+      } else {
+        setProfileMessage({ text: res.message || 'Failed to update profile.', isError: true });
+      }
     } catch (err: any) {
-      alert(`Update failed: ${err?.response?.data?.detail || err.message}`);
+      setProfileMessage({ text: err?.response?.data?.detail || err.message || 'An error occurred.', isError: true });
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -231,26 +277,78 @@ export const SettingsView: React.FC = () => {
             </div>
           )}
 
-          {/* User Operator Name */}
-          <div className="pt-3 border-t border-slate-800 space-y-2">
+          {/* User Operator Profile */}
+          <div className="pt-3 border-t border-slate-800 space-y-3">
             <label className="block font-tech text-xs text-slate-300 uppercase font-semibold">
-              Operator Designation (User Name)
+              Operator Designation & Profile Details
             </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={userNameInput}
-                onChange={(e) => setUserNameInput(e.target.value)}
-                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400 font-sans"
-              />
-              <button
-                type="button"
-                onClick={handleUpdateUserName}
-                className="cyber-btn text-xs px-4 flex items-center gap-1.5"
-              >
-                <Save className="w-3.5 h-3.5" />
-                Save
-              </button>
+
+            {profileMessage && (
+              <div className={`p-3 rounded-lg border text-xs font-sans ${profileMessage.isError
+                  ? 'bg-red-950/40 border-red-500/30 text-red-300'
+                  : 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                }`}>
+                {profileMessage.text}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] text-slate-400 font-tech mb-1 uppercase font-semibold">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={userNameInput}
+                  onChange={(e) => setUserNameInput(e.target.value)}
+                  placeholder="e.g. John Doe"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400 font-sans"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] text-slate-400 font-tech mb-1 uppercase font-semibold">
+                    Age
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="120"
+                    value={userAgeInput}
+                    onChange={(e) => setUserAgeInput(e.target.value)}
+                    placeholder="e.g. 25"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400 font-sans"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-400 font-tech mb-1 uppercase font-semibold">
+                    Gender
+                  </label>
+                  <select
+                    value={userGenderInput}
+                    onChange={(e) => setUserGenderInput(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-cyan-300 focus:outline-none focus:border-cyan-400 font-sans cursor-pointer"
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={handleUpdateUserProfile}
+                  disabled={savingProfile || fetchingProfile}
+                  className="cyber-btn text-xs px-5 py-2 flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {savingProfile ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
             </div>
           </div>
         </GlassCard>
@@ -267,9 +365,8 @@ export const SettingsView: React.FC = () => {
             <button
               type="button"
               onClick={handleToggleVoicePipeline}
-              className={`cyber-btn text-xs px-3 py-1.5 ${
-                voicePipelineActive ? 'cyber-btn-danger' : 'cyber-btn-primary'
-              }`}
+              className={`cyber-btn text-xs px-3 py-1.5 ${voicePipelineActive ? 'cyber-btn-danger' : 'cyber-btn-primary'
+                }`}
             >
               <Mic className="w-3.5 h-3.5" />
               {voicePipelineActive ? 'Stop Pipeline' : 'Start Pipeline'}
@@ -334,11 +431,10 @@ export const SettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setAutoVoiceResponse(!autoVoiceResponse)}
-                  className={`px-2.5 py-1 rounded border font-mono text-[11px] transition-colors ${
-                    autoVoiceResponse
+                  className={`px-2.5 py-1 rounded border font-mono text-[11px] transition-colors ${autoVoiceResponse
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : 'bg-slate-800 text-slate-400 border-slate-700'
-                  }`}
+                    }`}
                 >
                   {autoVoiceResponse ? 'ENABLED (ON)' : 'DISABLED (OFF)'}
                 </button>

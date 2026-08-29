@@ -32,6 +32,7 @@ from nexus.api.routes import (
     memory,
     pairing_api,
     permissions_api,
+    profile,
     tasks,
     vision,
     voice,
@@ -69,7 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log.info("Starting NEXUS API v%s", settings.version)
 
     # Initialize database
-    actual_db_url = f"sqlite+aiosqlite:///{settings.resolved_data_dir / 'nexus.db'}"
+    actual_db_url = settings.database_url or f"sqlite+aiosqlite:///{settings.resolved_data_dir / 'nexus.db'}"
     await init_engine(actual_db_url, echo=settings.database.echo)
 
     # Initialize the AI Brain
@@ -153,6 +154,7 @@ def create_app(settings: NexusSettings | None = None) -> FastAPI:
 
     app.include_router(health.router, prefix=prefix)
     app.include_router(auth.router, prefix=prefix)
+    app.include_router(profile.router, prefix=prefix)
     app.include_router(chat.router, prefix=prefix)
     app.include_router(conversations.router, prefix=prefix)
     app.include_router(voice.router, prefix=prefix)

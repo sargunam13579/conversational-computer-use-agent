@@ -34,6 +34,22 @@ def _resolve_db_url(url: str) -> str:
         # Ensure parent directory exists
         Path(resolved).parent.mkdir(parents=True, exist_ok=True)
         return f"{prefix}:///{resolved}"
+
+    # Auto-encode password if it contains special characters (like '@')
+    if "://" in url and "@" in url:
+        try:
+            from urllib.parse import quote
+            # Split by the last '@' to separate credentials from host
+            creds, host_part = url.rsplit("@", 1)
+            scheme, user_pass = creds.split("://", 1)
+            if ":" in user_pass:
+                user, password = user_pass.rsplit(":", 1)
+                # URL encode the password (e.g. '@' becomes '%40')
+                encoded_password = quote(password)
+                return f"{scheme}://{user}:{encoded_password}@{host_part}"
+        except Exception as e:
+            log.warning("Failed to auto-encode database password: %s", e)
+
     return url
 
 
@@ -53,12 +69,18 @@ async def init_engine(db_url: str, echo: bool = False) -> AsyncEngine:
     resolved_url = _resolve_db_url(db_url)
     log.info("Initializing database: %s", resolved_url.split("///")[-1])
 
+    is_sqlite = "sqlite" in resolved_url
+    if is_sqlite:
+        connect_args = {"check_same_thread": False}
+    else:
+        # Disable prepared statement caching for PgBouncer compatibility
+        connect_args = {"statement_cache_size": 0}
+
     _engine = create_async_engine(
         resolved_url,
         echo=echo,
         pool_pre_ping=True,
-        # SQLite-specific: enable WAL mode for better concurrent access
-        connect_args={"check_same_thread": False},
+        connect_args=connect_args,
     )
 
     _session_factory = async_sessionmaker(

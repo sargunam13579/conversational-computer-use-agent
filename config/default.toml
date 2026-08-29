@@ -72,7 +72,7 @@ persist_directory = "~/.nexus/chromadb"
 collection_name = "nexus_memory"
 
 [security]
-require_auth = false               # Enable when auth is implemented
+require_auth = true               # Enable when auth is implemented
 session_timeout_minutes = 30
 max_high_risk_per_minute = 5
 audit_enabled = true

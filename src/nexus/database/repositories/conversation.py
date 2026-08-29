@@ -104,7 +104,7 @@ class ConversationRepository:
             if completed_at:
                 tool_call.completed_at = completed_at
             elif status in ("success", "error"):
-                tool_call.completed_at = datetime.now(UTC)
+                tool_call.completed_at = datetime.now(UTC).replace(tzinfo=None)
 
     async def add_tool_result(
         self,

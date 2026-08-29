@@ -56,7 +56,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
     setProcessing,
     setVoiceModeEnabled,
   } = useVoice();
-  const userName = identity?.user_name || 'Sargunam';
+  const userName = identity?.user_name || 'User';
   const wasVoiceTriggered = useRef<boolean>(true);
   const [autoListen, setAutoListen] = useState<boolean>(true);
   const isMountedRef = useRef<boolean>(true);
@@ -467,8 +467,8 @@ export const ConvoComputerUseAgentView: React.FC = () => {
               }
             }}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono transition-all border ${autoListen
-                ? 'bg-cyan-950/60 border-cyan-400/60 text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.25)]'
-                : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+              ? 'bg-cyan-950/60 border-cyan-400/60 text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.25)]'
+              : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
               }`}
             title="Toggle Hands-Free Continuous Voice Conversation"
           >
@@ -671,8 +671,8 @@ export const ConvoComputerUseAgentView: React.FC = () => {
 
                 <div
                   className={`relative max-w-[85%] p-5 rounded-2xl text-sm sm:text-base leading-relaxed ${isUser
-                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-tr-sm shadow-md shadow-cyan-950/20'
-                      : 'bg-slate-900/90 border border-slate-800/90 text-slate-200 rounded-tl-sm shadow-sm'
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-tr-sm shadow-md shadow-cyan-950/20'
+                    : 'bg-slate-900/90 border border-slate-800/90 text-slate-200 rounded-tl-sm shadow-sm'
                     }`}
                 >
                   {/* Message Content or Edit Input */}
@@ -788,8 +788,8 @@ export const ConvoComputerUseAgentView: React.FC = () => {
                         <button
                           onClick={() => handlePlayTTS(msg.content, idx)}
                           className={`p-1 rounded-lg hover:bg-slate-800 transition-all ${isSpeaking && speakingMsgIdx === idx
-                              ? 'text-cyan-400 bg-slate-800'
-                              : 'text-slate-400 hover:text-cyan-300'
+                            ? 'text-cyan-400 bg-slate-800'
+                            : 'text-slate-400 hover:text-cyan-300'
                             }`}
                           title={isSpeaking && speakingMsgIdx === idx ? 'Stop voice' : 'Listen voice'}
                         >
@@ -939,8 +939,8 @@ export const ConvoComputerUseAgentView: React.FC = () => {
               onClick={handleToggleMic}
               disabled={isExecuting}
               className={`relative px-3.5 py-2 rounded-full flex items-center gap-2 transition-all shrink-0 focus:outline-none ${isListening
-                  ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-[0_0_20px_rgba(244,63,94,0.6)] scale-105 ring-2 ring-rose-300 animate-pulse'
-                  : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold shadow-[0_0_16px_rgba(0,240,255,0.4)] hover:scale-105'
+                ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-[0_0_20px_rgba(244,63,94,0.6)] scale-105 ring-2 ring-rose-300 animate-pulse'
+                : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold shadow-[0_0_16px_rgba(0,240,255,0.4)] hover:scale-105'
                 }`}
               title={isListening ? 'Listening live... Tap to mute' : 'Tap to speak voice command'}
             >

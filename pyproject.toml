@@ -29,6 +29,7 @@ dependencies = [
     # Database
     "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite>=0.20.0",
+    "asyncpg>=0.29.0",
 
     # LLM Providers
     "google-genai>=1.0.0",

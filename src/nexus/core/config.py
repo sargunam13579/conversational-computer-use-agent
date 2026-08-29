@@ -224,6 +224,7 @@ class NexusSettings(BaseSettings):
     supabase_anon_key: str = ""
     supabase_jwt_secret: str = ""
     supabase_service_role_key: str = ""
+    database_url: str = ""
 
     @property
     def resolved_data_dir(self) -> Path:

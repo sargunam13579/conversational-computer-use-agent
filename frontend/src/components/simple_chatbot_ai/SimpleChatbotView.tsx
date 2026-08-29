@@ -74,7 +74,7 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const userName = identity?.user_name || 'Sargunam';
+  const userName = identity?.user_name || 'User';
 
   const handleToggleComputerUse = () => {
     if (!isComputerUseActive) {
