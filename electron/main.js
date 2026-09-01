@@ -63,7 +63,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     title: 'Nexus AI',
-    icon: path.join(__dirname, '..', 'frontend', 'public', 'vite.svg'),
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -94,7 +94,7 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, '..', 'frontend', 'public', 'vite.svg');
+  const iconPath = path.join(__dirname, '..', 'build', 'icon.png');
   tray = new Tray(iconPath);
   
   const contextMenu = Menu.buildFromTemplate([

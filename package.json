@@ -26,6 +26,7 @@
     "files": [
       "electron/**/*",
       "frontend/dist/**/*",
+      "build/**/*",
       "package.json"
     ],
     "win": {
@@ -33,7 +34,7 @@
         "nsis",
         "appx"
       ],
-      "icon": "frontend/public/vite.svg"
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,
