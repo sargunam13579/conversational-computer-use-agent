@@ -38,6 +38,23 @@ const MainContent: React.FC = () => {
 
   const welcomeExecutedRef = useRef<boolean>(false);
 
+  const [showDisconnectBanner, setShowDisconnectBanner] = useState<boolean>(false);
+
+  useEffect(() => {
+    let timer: any = null;
+    if (!isBackendConnected && !isLoading) {
+      // Delay showing warning banner by 6s to allow initial Python startup
+      timer = setTimeout(() => {
+        setShowDisconnectBanner(true);
+      }, 6000);
+    } else {
+      setShowDisconnectBanner(false);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isBackendConnected, isLoading]);
+
   const activeConversationIdRef = useRef<string | null>(activeConversationId);
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -241,13 +258,13 @@ const MainContent: React.FC = () => {
       {/* Top Header HUD - Hidden in Simple Chatbot mode, visible in Conversational Computer-Use Agent and other OS views */}
       {!(activeView === 'assistant' && !isComputerUseActive) && <Header />}
 
-      {/* Backend connection warning banner if not connected */}
-      {!isBackendConnected && !isLoading && (
+      {/* Backend connection warning banner if not connected after grace period */}
+      {showDisconnectBanner && (
         <div className="bg-rose-500/20 border-b border-rose-500/40 text-rose-300 text-xs px-6 py-2 flex items-center justify-between font-tech shrink-0">
           <span>
-            ⚠️ BACKEND API DISCONNECTED (http://127.0.0.1:8000). Ensure the FastAPI server is running with <code className="font-mono bg-slate-900 px-1.5 py-0.5 rounded text-cyan-300">.\.venv\Scripts\python.exe -m nexus.main --mode api</code>.
+            ⚠️ Connecting to AI Engine (http://127.0.0.1:8000)...
           </span>
-          <span className="animate-pulse font-mono font-bold">ATTEMPTING RECONNECT...</span>
+          <span className="animate-pulse font-mono font-bold">RECONNECTING...</span>
         </div>
       )}
 
