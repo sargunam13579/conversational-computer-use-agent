@@ -173,10 +173,11 @@ export const NexusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     refreshState();
-    // Periodic status poll every 10 seconds
-    const interval = setInterval(refreshState, 10000);
+    // Poll every 2s while disconnected so we latch on immediately when backend is ready; 10s once connected
+    const pollIntervalMs = isBackendConnected ? 10000 : 2000;
+    const interval = setInterval(refreshState, pollIntervalMs);
     return () => clearInterval(interval);
-  }, [refreshState]);
+  }, [refreshState, isBackendConnected]);
 
   const requestNameChange = async (targetName: string): Promise<string> => {
     try {

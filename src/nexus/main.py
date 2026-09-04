@@ -120,9 +120,11 @@ def main() -> None:
         host = args.host or settings.api.host
         port = args.port or settings.api.port
 
+        from nexus.api.app import create_app
+        app = create_app()
+
         uvicorn.run(
-            "nexus.api.app:create_app",
-            factory=True,
+            app,
             host=host,
             port=port,
             log_level=settings.log_level.lower(),
@@ -131,4 +133,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

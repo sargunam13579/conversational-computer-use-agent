@@ -31,22 +31,27 @@ function spawnBackend() {
     const isPackaged = app.isPackaged;
     let backendPath;
     let args = [];
+    let cwd;
 
     if (!isPackaged) {
       // In development, spawn the virtual env python entrypoint
       backendPath = path.join(__dirname, '..', '.venv', 'Scripts', 'python.exe');
       args = ['-m', 'nexus.main', '--mode', 'api'];
+      cwd = path.join(__dirname, '..');
     } else {
-      // In production, run the bundled executable
+      // In production, run the bundled executable from resources/backend/
       backendPath = path.join(process.resourcesPath, 'backend', 'nexus_backend.exe');
+      args = ['--mode', 'api'];
+      // Use userData dir as cwd so backend can write db/logs to a writable location
+      cwd = app.getPath('userData');
     }
 
     try {
       backendProcess = spawn(backendPath, args, {
-        cwd: path.join(__dirname, '..'),
-        stdio: 'inherit',
-        shell: true,
-        windowsHide: true
+        cwd: cwd,
+        stdio: 'ignore',
+        windowsHide: true,
+        detached: false,
       });
 
       backendProcess.on('error', (err) => {
@@ -75,7 +80,7 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL('http://127.0.0.1:5173');
-    mainWindow.webContents.openDevTools();
+    // DevTools can be opened manually with Ctrl+Shift+I if needed
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'frontend', 'dist', 'index.html'));
   }

@@ -20,7 +20,17 @@ from pydantic_settings import BaseSettings
 # Path resolution
 # ---------------------------------------------------------------------------
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]  # nexus/
+import sys as _sys
+
+def _get_project_root() -> Path:
+    """Return the project root, compatible with both normal and PyInstaller frozen execution."""
+    if getattr(_sys, 'frozen', False) and hasattr(_sys, '_MEIPASS'):
+        # Running as a PyInstaller bundle — _MEIPASS is the temp extraction dir
+        return Path(_sys._MEIPASS)
+    # Running normally — go 3 levels up from this file: nexus/core/config.py -> nexus/
+    return Path(__file__).resolve().parents[3]
+
+_PROJECT_ROOT = _get_project_root()
 _CONFIG_DIR = _PROJECT_ROOT / "config"
 
 
@@ -263,8 +273,15 @@ def load_settings(env: str | None = None) -> NexusSettings:
         return _settings
 
     # Load .env file early so env vars are available
-    dotenv_path = _PROJECT_ROOT / ".env"
-    load_dotenv(dotenv_path)
+    potential_dotenvs = [
+        _PROJECT_ROOT / ".env",
+        Path(_sys.executable).parent / ".env" if getattr(_sys, 'frozen', False) else None,
+        Path.cwd() / ".env",
+    ]
+    for p in potential_dotenvs:
+        if p and p.is_file():
+            load_dotenv(p)
+            break
 
     # Determine environment
     env = env or os.getenv("NEXUS_ENV", "development")

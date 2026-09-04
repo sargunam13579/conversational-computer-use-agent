@@ -289,10 +289,19 @@ const AuthenticatedApp: React.FC = () => {
   const { session, loading } = useAuth();
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileSetupRequired, setProfileSetupRequired] = useState(false);
+  const checkedUserIdRef = useRef<string | null>(null);
+
+  const userId = session?.user?.id;
 
   useEffect(() => {
-    if (!session) {
+    if (!userId) {
+      checkedUserIdRef.current = null;
       setProfileLoading(false);
+      return;
+    }
+
+    // If profile has already been verified for this logged-in user, do not trigger loading screen or re-sync
+    if (checkedUserIdRef.current === userId) {
       return;
     }
 
@@ -303,7 +312,7 @@ const AuthenticatedApp: React.FC = () => {
 
         if (res.setup_required) {
           // If setup is required in PostgreSQL, check if we have user metadata from signup
-          const metadata = session.user?.user_metadata;
+          const metadata = session?.user?.user_metadata;
           if (metadata && metadata.name && metadata.age && metadata.gender) {
             try {
               // Silently sync metadata to backend PostgreSQL
@@ -323,15 +332,18 @@ const AuthenticatedApp: React.FC = () => {
         } else {
           setProfileSetupRequired(false);
         }
+        checkedUserIdRef.current = userId;
       } catch (err) {
         console.error('Failed to fetch profile:', err);
+        // Avoid getting permanently stuck on loading screen on error
+        checkedUserIdRef.current = userId;
       } finally {
         setProfileLoading(false);
       }
     };
 
     checkAndSyncProfile();
-  }, [session]);
+  }, [userId, session]);
 
   if (loading || (session && profileLoading)) {
     return (
