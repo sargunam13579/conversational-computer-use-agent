@@ -197,14 +197,14 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  const currentAssistantName = identity?.assistant_name || 'NEXUS';
+  const currentAssistantName = identity?.assistant_name || 'Seyal AI';
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto pb-8">
       <div>
         <h2 className="font-display font-black text-xl text-white tracking-wider flex items-center gap-2">
           <Settings className="w-5 h-5 text-cyan-400" />
-          NEXUS IDENTITY & SYSTEM CONFIGURATION
+          SEYAL AI IDENTITY & SYSTEM CONFIGURATION
         </h2>
         <p className="font-tech text-xs text-slate-400 uppercase tracking-widest mt-1">
           Assistant Persona, Two-Step Confirmation Guards, Wake Words & Audio Pipelines

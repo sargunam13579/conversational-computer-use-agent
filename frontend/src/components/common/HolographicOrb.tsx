@@ -100,7 +100,7 @@ export const HolographicOrb: React.FC<HolographicOrbProps> = ({
       >
         <div className="flex flex-col items-center justify-center">
           <span className="font-display font-black text-sm tracking-widest text-white">
-            NEXUS
+            Seyal AI
           </span>
           <span
             className="font-tech text-xs tracking-wider uppercase font-semibold"

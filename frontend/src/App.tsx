@@ -350,7 +350,7 @@ const AuthenticatedApp: React.FC = () => {
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#060911] text-slate-100 font-sans">
         <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-sm font-medium text-slate-400">
-          {loading ? 'Connecting to Nexus Auth...' : 'Loading User Profile...'}
+          {loading ? 'Connecting to Seyal AI Auth...' : 'Loading User Profile...'}
         </p>
       </div>
     );

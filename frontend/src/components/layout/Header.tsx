@@ -51,7 +51,7 @@ export const Header: React.FC = () => {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const assistantName = identity?.assistant_name || 'NEXUS';
+  const assistantName = identity?.assistant_name || 'Seyal AI';
 
   return (
     <header className="glass-panel rounded-none border-t-0 border-x-0 border-b border-cyan-500/20 px-6 py-3.5 flex items-center justify-between z-30 sticky top-0 bg-slate-950/80 backdrop-blur-xl">
@@ -67,7 +67,7 @@ export const Header: React.FC = () => {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="font-display font-black text-xl tracking-wider text-white">
-              NEXUS
+              Seyal AI
             </h1>
             <span className="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-tech font-bold tracking-widest border border-cyan-500/30">
               v{health?.version || '0.1.0'}
@@ -104,7 +104,7 @@ export const Header: React.FC = () => {
             {timeStr || '00:00:00'}
           </div>
           <div className="font-tech text-[10px] text-slate-400 tracking-widest">
-            {dateStr || 'NEXUS TIME'}
+            {dateStr || 'Seyal AI TIME'}
           </div>
         </div>
 

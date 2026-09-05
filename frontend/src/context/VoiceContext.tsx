@@ -921,7 +921,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     async (voiceName?: string) => {
       const targetVoice = voiceName || selectedVoiceNameRef.current;
       const turnId = getNextTurnId();
-      const testText = "Hello Sargunam, Nexus voice system is active with crystal clear studio audio.";
+      const testText = "Hello Sargunam, Seyal AI voice system is active with crystal clear studio audio.";
       if (targetVoice) {
         selectedVoiceNameRef.current = targetVoice;
       }

@@ -4,7 +4,6 @@ import {
   Volume2,
   Plus,
   ArrowUp,
-  Headphones,
   X,
   Edit3,
   Copy,
@@ -17,6 +16,7 @@ import { useNexus } from '../../context/NexusContext';
 import { useVoice } from '../../context/VoiceContext';
 import { api } from '../../services/api';
 import { ConvoComputerUseAgentView } from '../convo_computer_use_agent';
+import appLogo from '../../assets/app-logo.png';
 
 interface SimpleChatbotViewProps {
   onSendMessage?: (
@@ -267,7 +267,7 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
       <div className="h-16 px-6 sm:px-10 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-xl flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-3">
           <span className="font-display font-black text-xl sm:text-2xl tracking-wider text-white">
-            Nex<span className="text-cyan-400">Us</span>
+            Seyal <span className="text-cyan-400">AI</span>
           </span>
         </div>
 
@@ -299,9 +299,13 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
               }`}
             title="Click to toggle Conversational Computer-Use Agent Mode"
           >
-            {/* Headphone Avatar Circle */}
-            <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-cyan-600 via-blue-600 to-indigo-600 flex items-center justify-center text-white border-2 border-slate-900 shadow-lg">
-              <Headphones className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
+            {/* App Logo Emblem */}
+            <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-slate-900 bg-slate-950 shadow-lg flex items-center justify-center">
+              <img
+                src={appLogo}
+                alt="Seyal AI Agent"
+                className="w-full h-full object-cover rounded-full group-hover:scale-110 transition-transform duration-300"
+              />
             </div>
 
             {/* Glowing Active Status Badge */}
@@ -345,7 +349,7 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
                   >
                     {!isUser && (
                       <div className="w-8 h-8 rounded-full bg-cyan-600/20 border border-cyan-400/40 text-cyan-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                        N
+                        S
                       </div>
                     )}
 
@@ -455,11 +459,11 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
               {isProcessing && (
                 <div className="flex items-start gap-3.5 justify-start animate-fadeIn w-full">
                   <div className="w-8 h-8 rounded-full bg-cyan-600/20 border border-cyan-400/40 text-cyan-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                    N
+                    S
                   </div>
                   <div className="p-5 rounded-2xl rounded-tl-sm bg-slate-900/90 border border-slate-800 text-slate-300 text-xs sm:text-sm font-mono flex items-center gap-2.5">
                     <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                    <span>NexUs is thinking...</span>
+                    <span>Seyal AI is thinking...</span>
                   </div>
                 </div>
               )}
@@ -534,7 +538,7 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask NexUs..."
+                  placeholder="Ask Seyal AI..."
                   className="flex-1 bg-transparent text-slate-100 placeholder-slate-500 text-sm sm:text-base focus:outline-none px-2 py-1"
                 />
 

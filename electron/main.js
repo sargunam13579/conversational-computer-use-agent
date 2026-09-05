@@ -67,7 +67,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: 'Nexus AI',
+    title: 'Seyal AI',
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -104,7 +104,7 @@ function createTray() {
   
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Open Nexus AI',
+      label: 'Open Seyal AI',
       click: () => {
         if (mainWindow) {
           mainWindow.show();
@@ -122,7 +122,7 @@ function createTray() {
     }
   ]);
 
-  tray.setToolTip('Nexus AI');
+  tray.setToolTip('Seyal AI');
   tray.setContextMenu(contextMenu);
 
   tray.on('double-click', () => {

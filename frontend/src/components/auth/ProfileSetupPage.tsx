@@ -65,7 +65,7 @@ export const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ onComplete }
             Complete Your Profile
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Please provide your details to personalize Nexus AI
+            Please provide your details to personalize Seyal AI
           </p>
         </div>
 
@@ -148,7 +148,7 @@ export const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ onComplete }
 
         <div className="mt-8 pt-6 border-t border-slate-800/80 flex items-center justify-center gap-2 text-xs text-slate-600">
           <Cpu className="w-4 h-4 text-indigo-500" />
-          <span>Nexus Personal Assistant System</span>
+          <span>Seyal AI Personal Assistant System</span>
         </div>
       </div>
     </div>

@@ -215,7 +215,7 @@ export const Sidebar: React.FC<SidebarProps> = () => {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_#00f0ff] animate-pulse" />
             <span className="font-display font-black text-xl tracking-wider text-white">
-              Nex<span className="text-cyan-400">Us</span>
+              Seyal <span className="text-cyan-400">AI</span>
             </span>
           </div>
 
@@ -409,7 +409,7 @@ export const Sidebar: React.FC<SidebarProps> = () => {
                 </div>
                 <div className="flex flex-col truncate flex-grow">
                   <span className="text-xs font-semibold text-slate-200 truncate">{userName || 'User'}</span>
-                  <span className="text-[10px] text-slate-500 truncate">{user?.email || 'dev@nexus.local'}</span>
+                  <span className="text-[10px] text-slate-500 truncate">{user?.email || 'dev@seyalai.local'}</span>
                   <span className="text-[10px] font-semibold text-cyan-400 mt-0.5">Free</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />

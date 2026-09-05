@@ -29,7 +29,7 @@ export const ChatGPTVoiceModal: React.FC<ChatGPTVoiceModalProps> = ({
   } = useVoice();
 
   const { identity } = useNexus();
-  const assistantName = identity?.assistant_name || 'NEXUS';
+  const assistantName = identity?.assistant_name || 'Seyal AI';
   const userName = identity?.user_name || 'User';
   const [subtitle, setSubtitle] = useState<string>('');
 

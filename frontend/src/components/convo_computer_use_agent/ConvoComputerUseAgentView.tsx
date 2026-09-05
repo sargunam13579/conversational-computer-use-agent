@@ -540,7 +540,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <Volume2 className="w-4 h-4 text-purple-400 animate-pulse shrink-0" />
                 <span className="text-xs font-mono text-purple-300 truncate">
-                  🔊 NexUs Speaking live response...
+                  🔊 Seyal AI Speaking live response...
                 </span>
               </div>
               <button

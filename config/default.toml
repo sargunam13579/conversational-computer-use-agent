@@ -3,7 +3,7 @@
 # ==============================================================================
 
 [general]
-app_name = "NEXUS"
+app_name = "Seyal AI"
 version = "0.1.0"
 data_dir = "~/.nexus"
 log_level = "INFO"

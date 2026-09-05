@@ -18,8 +18,8 @@ from nexus.utils.logging import get_logger
 
 log = get_logger("core.identity")
 
-DEFAULT_ASSISTANT_NAME = "NEXUS"
-DEFAULT_WAKE_WORD = "NEXUS"
+DEFAULT_ASSISTANT_NAME = "Seyal AI"
+DEFAULT_WAKE_WORD = "Seyal AI"
 DEFAULT_PREFIXES = ["hey", "ok", "okay", "hi", "hello"]
 
 

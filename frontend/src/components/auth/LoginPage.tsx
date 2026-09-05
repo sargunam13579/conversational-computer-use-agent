@@ -89,7 +89,7 @@ export const LoginPage: React.FC = () => {
             <Cpu className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-            NEXUS AI
+            Seyal AI
           </h1>
           <p className="text-sm text-slate-400 mt-1">
             Voice-First & Autonomous Personal Assistant
@@ -254,7 +254,7 @@ export const LoginPage: React.FC = () => {
               <span className="inline-block w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
               <>
-                <span>{isSignUp ? 'Create Account' : 'Sign In to Nexus'}</span>
+                <span>{isSignUp ? 'Create Account' : 'Sign In to Seyal AI'}</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
