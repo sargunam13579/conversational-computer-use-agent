@@ -8,6 +8,7 @@ live conversational steering, screen element inspection, and emergency controls.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -81,6 +82,57 @@ async def get_computer_use_status() -> dict[str, Any]:
     }
 
 
+async def _persist_computer_use_turn(
+    target_conv_id: str,
+    goal: str,
+    narration: str,
+    status: str,
+    steps_count: int,
+) -> None:
+    """Non-blocking background helper to persist computer-use conversation and messages to Supabase."""
+    try:
+        from sqlalchemy import select
+        from nexus.database.engine import get_session
+        from nexus.database.models import Session as DBSession, User
+        from nexus.database.repositories.conversation import ConversationRepository
+
+        async with get_session() as session:
+            repo = ConversationRepository(session)
+            conv = await repo.get_conversation(target_conv_id)
+            if conv is None:
+                user_res = await session.execute(select(User).limit(1))
+                db_user = user_res.scalar_one_or_none()
+                if db_user is None:
+                    db_user = User(name="User")
+                    session.add(db_user)
+                    await session.flush()
+
+                sess_res = await session.execute(select(DBSession).where(DBSession.user_id == db_user.id).limit(1))
+                db_session = sess_res.scalar_one_or_none()
+                if db_session is None:
+                    db_session = DBSession(user_id=db_user.id)
+                    session.add(db_session)
+                    await session.flush()
+
+                clean_goal = goal.strip()
+                clean_summary = f"[Computer-Use] {clean_goal[:35]}" + ("..." if len(clean_goal) > 35 else "")
+                conv = await repo.create_conversation(
+                    session_id=db_session.id,
+                    summary=clean_summary,
+                    conversation_id=target_conv_id,
+                )
+
+            await repo.add_message(conversation_id=conv.id, role="user", content=goal)
+            assistant_content = (
+                narration
+                or f"Task {status}. {steps_count} autonomous steps executed on Windows."
+            )
+            await repo.add_message(conversation_id=conv.id, role="assistant", content=assistant_content)
+            await session.commit()
+    except Exception as db_err:
+        log.warning("Computer-Use background database persistence notice: %s", db_err)
+
+
 @router.post("/run")
 async def run_computer_use_goal(req: RunGoalRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
     """Start an autonomous conversational computer-use goal or handle stop commands."""
@@ -109,55 +161,23 @@ async def run_computer_use_goal(req: RunGoalRequest, background_tasks: Backgroun
     # 3. Launch task
     result = await agent.run_goal(goal=req.goal, auto_confirm=req.auto_confirm)
 
-    # Persist message and conversation into SQLite database with [Computer-Use] prefix
-    conversation_id = req.conversation_id
-    try:
-        from sqlalchemy import select
+    # 4. Non-blocking background database persistence
+    active_conv_id = req.conversation_id or str(uuid.uuid4())
+    steps_taken = len(result.get("history", []))
+    final_narr = result.get("narration") or ""
+    final_status = result.get("status", "completed")
 
-        from nexus.database.engine import get_session
-        from nexus.database.models import Session as DBSession
-        from nexus.database.models import User
-        from nexus.database.repositories.conversation import ConversationRepository
+    asyncio.create_task(
+        _persist_computer_use_turn(
+            target_conv_id=active_conv_id,
+            goal=req.goal,
+            narration=final_narr,
+            status=final_status,
+            steps_count=steps_taken,
+        )
+    )
 
-        async with get_session() as session:
-            repo = ConversationRepository(session)
-            conv = None
-            if conversation_id:
-                conv = await repo.get_conversation(conversation_id)
-
-            if conv is None:
-                user_res = await session.execute(select(User).limit(1))
-                db_user = user_res.scalar_one_or_none()
-                if db_user is None:
-                    db_user = User(name="User")
-                    session.add(db_user)
-                    await session.flush()
-
-                sess_res = await session.execute(select(DBSession).where(DBSession.user_id == db_user.id).limit(1))
-                db_session = sess_res.scalar_one_or_none()
-                if db_session is None:
-                    db_session = DBSession(user_id=db_user.id)
-                    session.add(db_session)
-                    await session.flush()
-
-                clean_goal = req.goal.strip()
-                clean_summary = f"[Computer-Use] {clean_goal[:35]}" + ("..." if len(clean_goal) > 35 else "")
-                conv = await repo.create_conversation(session_id=db_session.id, summary=clean_summary)
-                conversation_id = conv.id
-
-            await repo.add_message(conversation_id=conv.id, role="user", content=req.goal)
-            steps_taken = len(result.get("history", []))
-            assistant_content = (
-                result.get("narration")
-                or f"Task {result.get('status', 'completed')}. {steps_taken} autonomous steps executed on Windows."
-            )
-            await repo.add_message(conversation_id=conv.id, role="assistant", content=assistant_content)
-            await session.commit()
-    except Exception as db_err:
-        log.warning("Computer-Use database persistence notice: %s", db_err)
-        conversation_id = conversation_id or "cu_default"
-
-    result["conversation_id"] = conversation_id
+    result["conversation_id"] = active_conv_id
     return result
 
 

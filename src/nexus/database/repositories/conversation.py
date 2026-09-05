@@ -22,10 +22,14 @@ class ConversationRepository:
         self._session = session
 
     async def create_conversation(
-        self, session_id: str, summary: str | None = None
+        self, session_id: str, summary: str | None = None, conversation_id: str | None = None
     ) -> Conversation:
         """Create a new conversation."""
-        conversation = Conversation(session_id=session_id, summary=summary)
+        conversation = (
+            Conversation(id=conversation_id, session_id=session_id, summary=summary)
+            if conversation_id
+            else Conversation(session_id=session_id, summary=summary)
+        )
         self._session.add(conversation)
         await self._session.flush()
         return conversation

@@ -11,7 +11,9 @@ Supports:
 
 from __future__ import annotations
 
+import asyncio
 import json
+import uuid
 from io import BytesIO
 from pathlib import Path
 
@@ -309,6 +311,67 @@ async def extract_file_content(
     )
 
 
+async def _persist_chat_turn(
+    target_conv_id: str,
+    user_message: str,
+    file_names: list[str],
+    response_text: str,
+) -> None:
+    """Non-blocking background helper to persist chat conversation and messages to Supabase database."""
+    try:
+        from sqlalchemy import select
+        from nexus.database.engine import get_session
+        from nexus.database.models import Session as DBSession, User
+        from nexus.database.repositories.conversation import ConversationRepository
+
+        async with get_session() as session:
+            repo = ConversationRepository(session)
+            conv = await repo.get_conversation(target_conv_id)
+
+            if conv is None:
+                user_res = await session.execute(select(User).limit(1))
+                db_user = user_res.scalar_one_or_none()
+                if db_user is None:
+                    db_user = User(name="User")
+                    session.add(db_user)
+                    await session.flush()
+
+                sess_res = await session.execute(
+                    select(DBSession).where(DBSession.user_id == db_user.id).limit(1)
+                )
+                db_session = sess_res.scalar_one_or_none()
+                if db_session is None:
+                    db_session = DBSession(user_id=db_user.id)
+                    session.add(db_session)
+                    await session.flush()
+
+                summary_source = user_message or (file_names[0] if file_names else "File Analysis")
+                clean_summary = summary_source.strip()[:42] + ("..." if len(summary_source.strip()) > 42 else "")
+                conv = await repo.create_conversation(
+                    session_id=db_session.id,
+                    summary=clean_summary,
+                    conversation_id=target_conv_id,
+                )
+
+            database_user_content = user_message if user_message else "Analyze uploaded file."
+            if file_names:
+                database_user_content = f"{database_user_content}\n[Attached files: {', '.join(file_names)}]"
+
+            await repo.add_message(
+                conversation_id=conv.id,
+                role="user",
+                content=database_user_content,
+            )
+            await repo.add_message(
+                conversation_id=conv.id,
+                role="assistant",
+                content=response_text,
+            )
+            await session.commit()
+    except Exception as db_error:
+        log.warning("Non-blocking background database persistence notice: %s", db_error)
+
+
 @router.post(
     "/chat",
     response_model=ChatResponse,
@@ -464,163 +527,21 @@ async def chat(
         ) from error
 
     # ----------------------------------------------
-    # DATABASE PERSISTENCE
+    # NON-BLOCKING BACKGROUND DATABASE PERSISTENCE
     # ----------------------------------------------
+    active_conversation_id = conversation_id or str(uuid.uuid4())
+    uploaded_filenames = [f.filename or "uploaded_file" for f in files] if files else []
 
-    try:
-
-        from sqlalchemy import select
-
-        from nexus.database.engine import (
-            get_session,
+    asyncio.create_task(
+        _persist_chat_turn(
+            target_conv_id=active_conversation_id,
+            user_message=user_message,
+            file_names=uploaded_filenames,
+            response_text=response_text,
         )
+    )
 
-        from nexus.database.models import (
-            Session as DBSession,
-        )
-
-        from nexus.database.models import User
-
-        from nexus.database.repositories.conversation import (
-            ConversationRepository,
-        )
-
-        async with get_session() as session:
-
-            repo = ConversationRepository(
-                session
-            )
-
-            conv = None
-
-            if conversation_id:
-                conv = await (
-                    repo.get_conversation(
-                        conversation_id
-                    )
-                )
-
-            if conv is None:
-
-                user_res = await session.execute(
-                    select(User).limit(1)
-                )
-
-                db_user = (
-                    user_res.scalar_one_or_none()
-                )
-
-                if db_user is None:
-
-                    db_user = User(
-                        name="User"
-                    )
-
-                    session.add(
-                        db_user
-                    )
-
-                    await session.flush()
-
-                sess_res = await session.execute(
-                    select(DBSession)
-                    .where(
-                        DBSession.user_id
-                        == db_user.id
-                    )
-                    .limit(1)
-                )
-
-                db_session = (
-                    sess_res.scalar_one_or_none()
-                )
-
-                if db_session is None:
-
-                    db_session = DBSession(
-                        user_id=db_user.id
-                    )
-
-                    session.add(
-                        db_session
-                    )
-
-                    await session.flush()
-
-                summary_source = (
-                    user_message
-                    or (
-                        files[0].filename
-                        if files
-                        else "File Analysis"
-                    )
-                )
-
-                clean_summary = (
-                    # pyrefly: ignore [missing-attribute]
-                    summary_source.strip()[:42]
-                    + (
-                        "..."
-                        if len(
-                            # pyrefly: ignore [missing-attribute]
-                            summary_source.strip()
-                        ) > 42
-                        else ""
-                    )
-                )
-
-                conv = await (
-                    repo.create_conversation(
-                        session_id=db_session.id,
-                        summary=clean_summary,
-                    )
-                )
-
-                conversation_id = conv.id
-
-            database_user_content = (
-                user_message
-                if user_message
-                else "Analyze uploaded file."
-            )
-
-            if files:
-
-                file_names = ", ".join(
-                    file.filename or "uploaded_file"
-                    for file in files
-                )
-
-                database_user_content = (
-                    f"{database_user_content}\n"
-                    f"[Attached files: {file_names}]"
-                )
-
-            await repo.add_message(
-                conversation_id=conv.id,
-                role="user",
-                content=database_user_content,
-            )
-
-            await repo.add_message(
-                conversation_id=conv.id,
-                role="assistant",
-                content=response_text,
-            )
-
-            await session.commit()
-
-    except Exception as db_error:
-
-        log.warning(
-            "Database message persistence notice: %s",
-            db_error,
-        )
-
-        conversation_id = (
-            conversation_id
-            or "default"
-        )
+    conversation_id = active_conversation_id
 
     # ----------------------------------------------
     # MODEL INFORMATION

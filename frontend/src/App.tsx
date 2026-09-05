@@ -139,8 +139,10 @@ const MainContent: React.FC = () => {
       } else {
         setMessages((prev) => [...prev, { ...assistantMsg, content: '' }]);
         let currentWordIdx = 0;
+        // Adaptive chunk size so typing animation is fast, snappy, and finishes in ~250-300ms
+        const stepSize = Math.max(2, Math.ceil(words.length / 20));
         const streamInterval = setInterval(() => {
-          currentWordIdx++;
+          currentWordIdx = Math.min(words.length, currentWordIdx + stepSize);
           const visibleText = words.slice(0, currentWordIdx).join(' ');
           setMessages((prev) => {
             if (prev.length === 0) return prev;
@@ -155,7 +157,7 @@ const MainContent: React.FC = () => {
           if (currentWordIdx >= words.length) {
             clearInterval(streamInterval);
           }
-        }, 35);
+        }, 15);
       }
 
       if (res.tool_calls && res.tool_calls.length > 0) {
