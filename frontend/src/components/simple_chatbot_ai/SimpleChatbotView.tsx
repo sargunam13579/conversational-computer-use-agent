@@ -18,6 +18,9 @@ import { api } from '../../services/api';
 import { ConvoComputerUseAgentView } from '../convo_computer_use_agent';
 import appLogo from '../../assets/app-logo.png';
 
+
+
+
 interface SimpleChatbotViewProps {
   onSendMessage?: (
     message: string,
@@ -263,59 +266,8 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
         className="hidden"
       />
 
-      {/* Top Header Bar: Clean NexUs Brand + Top-Right Headphone Agent Circle */}
-      <div className="h-16 px-6 sm:px-10 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-xl flex items-center justify-between shrink-0 z-30">
-        <div className="flex items-center gap-3">
-          <span className="font-display font-black text-xl sm:text-2xl tracking-wider text-white">
-            Seyal <span className="text-cyan-400">AI</span>
-          </span>
-        </div>
 
-        {/* Top-Right Area: Back to Simple Chat Button + Headphone Circle */}
-        <div className="flex items-center gap-3">
-          {isComputerUseActive && (
-            <button
-              onClick={() => {
-                setIsComputerUseActive(false);
-                stopSpeaking();
-                api.stopComputerUse().catch(() => { });
-                if (typeof window !== 'undefined' && window.speechSynthesis) {
-                  window.speechSynthesis.cancel();
-                }
-              }}
-              className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white px-3.5 py-1.5 rounded-full bg-slate-900 border border-slate-700 hover:border-cyan-500/40 transition-all shadow-sm group"
-              title="Return to Simple Chatbot"
-            >
-              <X className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-90 transition-transform" />
-              <span>Back to Simple Chat</span>
-            </button>
-          )}
 
-          <button
-            onClick={handleToggleComputerUse}
-            className={`relative group p-0.5 rounded-full transition-all duration-300 focus:outline-none ${isComputerUseActive
-              ? 'ring-2 ring-cyan-400 shadow-[0_0_22px_rgba(0,240,255,0.6)] scale-105'
-              : 'hover:ring-2 hover:ring-cyan-500/50 hover:shadow-[0_0_16px_rgba(0,240,255,0.3)]'
-              }`}
-            title="Click to toggle Conversational Computer-Use Agent Mode"
-          >
-            {/* App Logo Emblem */}
-            <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-slate-900 bg-slate-950 shadow-lg flex items-center justify-center">
-              <img
-                src={appLogo}
-                alt="Seyal AI Agent"
-                className="w-full h-full object-cover rounded-full group-hover:scale-110 transition-transform duration-300"
-              />
-            </div>
-
-            {/* Glowing Active Status Badge */}
-            <span
-              className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-slate-950 ${isComputerUseActive ? 'bg-cyan-400 animate-ping' : 'bg-emerald-400'
-                }`}
-            />
-          </button>
-        </div>
-      </div>
 
       {/* Main Content Area */}
       {isComputerUseActive ? (
@@ -323,7 +275,36 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
         <ConvoComputerUseAgentView />
       ) : (
         /* Simple Chatbot View with exact 15% left & 15% right space */
-        <div className="flex-1 flex flex-col min-h-0 w-full overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 w-full overflow-hidden relative">
+
+          {/* Top Header Bar: Left "Seyal AI" + Right Logo Button */}
+          <div className="h-14 px-6 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-xl flex items-center justify-between shrink-0 z-20">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_#00f0ff] animate-pulse" />
+              <h1 className="font-display font-black text-2xl tracking-wider text-white">
+                Seyal <span className="text-cyan-400">AI</span>
+              </h1>
+            </div>
+
+            {/* Switch to Conversational Computer-Use Agent Button */}
+            <button
+              onClick={handleToggleComputerUse}
+              className="relative group p-0.5 rounded-full transition-all duration-300 focus:outline-none hover:ring-2 hover:ring-cyan-500/50 hover:shadow-[0_0_16px_rgba(0,240,255,0.3)] hover:scale-105 active:scale-95"
+              title="Switch to Conversational Computer-Use Agent"
+            >
+              <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-cyan-500/40 bg-slate-950 shadow-lg flex items-center justify-center">
+                <img
+                  src={appLogo}
+                  alt="Seyal AI Agent"
+                  className="w-full h-full object-cover rounded-full group-hover:scale-110 transition-transform duration-300"
+                />
+              </div>
+              {/* Online status badge */}
+              <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2 border-slate-950" />
+            </button>
+          </div>
+
+
           {/* Messages Scroll Container (w-[70%] with 15% gutters on both sides) */}
           <div className="flex-1 overflow-y-auto px-2 pt-6 pb-4 custom-scrollbar w-full">
             <div className="w-[70%] mx-auto space-y-6">

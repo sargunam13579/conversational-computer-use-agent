@@ -13,6 +13,7 @@ from __future__ import annotations
 import io
 import wave
 from abc import ABC, abstractmethod
+from typing import Any
 
 import numpy as np
 
@@ -96,6 +97,7 @@ class GoogleWebSTTProvider(BaseSTTProvider):
 
         def _do_transcribe() -> str:
             recognizer = sr.Recognizer()
+            recognize_fn: Any = getattr(recognizer, "recognize_google", None)
 
             # Convert numpy array to WAV bytes for speech_recognition
             if audio_data.dtype != np.int16:
@@ -116,14 +118,43 @@ class GoogleWebSTTProvider(BaseSTTProvider):
                 audio = recognizer.record(source)
 
             try:
-                recognize_fn = getattr(recognizer, "recognize_google", None)
-                if callable(recognize_fn):
-                    text = str(recognize_fn(audio, language=language))
-                else:
+                if not callable(recognize_fn):
                     raise STTError("Google recognition backend not available on Recognizer")
+
+                text = str(recognize_fn(audio, language=language))
+                
+                # Check for repetitive single-word hallucinatory loop (e.g. "jao jao jao...")
+                words = text.strip().split()
+                is_repetitive = len(words) >= 4 and len(set(words)) <= 2
+
+                if is_repetitive or not text:
+                    # Fallback to Indian English (en-IN)
+                    try:
+                        wav_buffer.seek(0)
+                        with sr.AudioFile(wav_buffer) as fallback_src:
+                            fallback_audio = recognizer.record(fallback_src)
+                        fallback_text = str(recognize_fn(fallback_audio, language="en-IN"))
+                        if fallback_text and len(fallback_text.strip()) > 0:
+                            log.info("STT fallback (to en-IN) transcription: '%s'", fallback_text)
+                            return fallback_text
+                    except Exception:
+                        pass
+
                 log.info("STT transcription: '%s'", text)
                 return text
             except sr.UnknownValueError:
+                # If primary language failed, try en-IN as fallback
+                if language != "en-IN" and callable(recognize_fn):
+                    try:
+                        wav_buffer.seek(0)
+                        with sr.AudioFile(wav_buffer) as fallback_src:
+                            fallback_audio = recognizer.record(fallback_src)
+                        fallback_text = str(recognize_fn(fallback_audio, language="en-IN"))
+                        if fallback_text:
+                            log.info("STT fallback (to en-IN) transcription: '%s'", fallback_text)
+                            return fallback_text
+                    except Exception:
+                        pass
                 log.debug("STT: Could not understand audio")
                 return ""
             except sr.RequestError as e:

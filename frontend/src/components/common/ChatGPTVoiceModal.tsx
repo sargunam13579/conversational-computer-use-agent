@@ -12,6 +12,7 @@ interface ChatGPTVoiceModalProps {
 export const ChatGPTVoiceModal: React.FC<ChatGPTVoiceModalProps> = ({
   isOpen,
   onClose,
+  onSendMessage,
 }) => {
   const {
     voiceState,
@@ -25,6 +26,7 @@ export const ChatGPTVoiceModal: React.FC<ChatGPTVoiceModalProps> = ({
     cancelCurrentSpeech,
     transcript,
     interimTranscript,
+    registerTranscriptHandler,
     error,
   } = useVoice();
 
@@ -37,8 +39,27 @@ export const ChatGPTVoiceModal: React.FC<ChatGPTVoiceModalProps> = ({
     if (isOpen) {
       setVoiceModeEnabled(true);
       startContinuousListening();
+    } else {
+      setVoiceModeEnabled(false);
+      stopListening();
     }
-  }, [isOpen, setVoiceModeEnabled, startContinuousListening]);
+    return () => {
+      stopListening();
+    };
+  }, [isOpen, setVoiceModeEnabled, startContinuousListening, stopListening]);
+
+  // Hook up final spoken transcript to onSendMessage callback
+  useEffect(() => {
+    if (!isOpen || !onSendMessage) return;
+    const unregister = registerTranscriptHandler((finalText: string) => {
+      if (finalText && finalText.trim()) {
+        onSendMessage(finalText.trim());
+      }
+    });
+    return () => {
+      unregister();
+    };
+  }, [isOpen, onSendMessage, registerTranscriptHandler]);
 
   useEffect(() => {
     if (interimTranscript) {

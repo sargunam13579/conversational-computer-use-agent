@@ -44,17 +44,20 @@ async def list_conversations(
                 limit=page_size,
             )
 
-            summaries = []
-            for conv in conversations:
-                msg_count = await repo.count_messages(conv.id)
-                summaries.append(
-                    ConversationSummary(
-                        id=conv.id,
-                        summary=conv.summary,
-                        created_at=conv.created_at,
-                        message_count=msg_count,
-                    )
+            # Build summaries without a per-conversation count_messages call.
+            # The frontend Sidebar does not display message_count, so the previous
+            # N+1 loop (one DB SELECT per conversation) was causing up to 3s of
+            # unnecessary latency when 50 conversations are loaded.
+            summaries = [
+                ConversationSummary(
+                    id=conv.id,
+                    summary=conv.summary,
+                    created_at=conv.created_at,
+                    message_count=0,
                 )
+                for conv in conversations
+            ]
+
 
             return ConversationListResponse(
                 conversations=summaries,

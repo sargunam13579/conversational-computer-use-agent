@@ -47,28 +47,38 @@ async def get_identity(request: Request) -> IdentityResponse:
         else None
     )
 
-    # Resolve username dynamically from the authenticated database profile if present
+    # Resolve username dynamically from the authenticated JWT profile (or DB fallback)
     user_name = identity.user_name
     try:
         from fastapi.security import HTTPBearer
         from nexus.security.supabase_auth import get_current_user
-        
+
         security_bearer = HTTPBearer(auto_error=False)
         credentials = await security_bearer(request)
         current_user = await get_current_user(request, credentials=credentials)
         if current_user and current_user.user_id != "local-dev-user-0000":
-            from nexus.database.engine import get_session
-            from nexus.database.models import User
-            from sqlalchemy import select
-            
-            async with get_session() as session:
-                stmt = select(User).where(User.id == current_user.user_id)
-                res = await session.execute(stmt)
-                db_user = res.scalar_one_or_none()
-                if db_user and db_user.name:
-                    user_name = db_user.name
+            # First try the JWT user_metadata — available instantly without any DB call
+            jwt_name: str = (
+                current_user.user_metadata.get("name", "")
+                or current_user.user_metadata.get("full_name", "")
+            )
+            if jwt_name:
+                user_name = jwt_name
+            else:
+                # Fall back to a DB lookup only when the JWT has no name stored
+                from nexus.database.engine import get_session
+                from nexus.database.models import User
+                from sqlalchemy import select
+
+                async with get_session() as session:
+                    stmt = select(User).where(User.id == current_user.user_id)
+                    res = await session.execute(stmt)
+                    db_user = res.scalar_one_or_none()
+                    if db_user and db_user.name:
+                        user_name = db_user.name
     except Exception as e:
         log.warning("Could not dynamically resolve authenticated user name: %s", e)
+
 
     return IdentityResponse(
         assistant_name=identity.name,

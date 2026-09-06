@@ -14,15 +14,15 @@ import {
   Edit3,
   ChevronDown,
   ChevronUp,
-  Eye,
-  X,
   RefreshCw,
   Mic,
+  Sparkles,
 } from 'lucide-react';
 import { useNexus } from '../../context/NexusContext';
 import { useVoice } from '../../context/VoiceContext';
 import { api } from '../../services/api';
 import type { MessageItem } from '../../types';
+import { ChatGPTVoiceModal } from '../common/ChatGPTVoiceModal';
 
 interface StepItem {
   step: number;
@@ -58,7 +58,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
   } = useVoice();
   const userName = identity?.user_name || 'User';
   const wasVoiceTriggered = useRef<boolean>(true);
-  const [autoListen, setAutoListen] = useState<boolean>(true);
+  const autoListen = true; // Always active internally for hands-free workflow
   const isMountedRef = useRef<boolean>(true);
 
   const [inputMessage, setInputMessage] = useState('');
@@ -75,9 +75,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
   const [editingMsgIdx, setEditingMsgIdx] = useState<number | null>(null);
   const [editingText, setEditingText] = useState('');
   const [expandedTraceIdx, setExpandedTraceIdx] = useState<number | null>(null);
-  const [showScreenModal, setShowScreenModal] = useState(false);
-  const [liveScreenData, setLiveScreenData] = useState<any>(null);
-  const [isLoadingScreen, setIsLoadingScreen] = useState(false);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
 
   // Track component mount lifecycle
   useEffect(() => {
@@ -103,7 +101,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
           handleSend(spokenText, true);
         }
       }
-    }, recognitionLang || 'ta-IN');
+    }, recognitionLang || 'en-IN');
   }, [startListening, recognitionLang]);
 
   // Welcome voice greeting on mount and auto-activate voice listening
@@ -410,19 +408,6 @@ export const ConvoComputerUseAgentView: React.FC = () => {
     setEditingMsgIdx(null);
   };
 
-  const handleInspectScreen = async () => {
-    setIsLoadingScreen(true);
-    setShowScreenModal(true);
-    try {
-      const res = await api.observeScreenState(true);
-      setLiveScreenData(res);
-    } catch (err: any) {
-      console.error('Failed to observe screen:', err);
-    } finally {
-      setIsLoadingScreen(false);
-    }
-  };
-
   const computerUsePresets = [
     {
       title: 'VS Code open பண்ணு',
@@ -452,56 +437,6 @@ export const ConvoComputerUseAgentView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative w-full h-full">
-      {/* Top Quick HUD: Screen View + Hands-Free Voice Toggle + Language Switcher */}
-      <div className="px-6 py-2 border-b border-slate-800/60 bg-slate-950/40 backdrop-blur-md flex items-center justify-between z-30 shrink-0">
-        <div className="flex items-center gap-2.5">
-          {/* Hands-Free Auto-Listen Switch */}
-          <button
-            onClick={() => {
-              const next = !autoListen;
-              setAutoListen(next);
-              if (next && !isListening && !isSpeaking && !isExecuting) {
-                triggerVoiceListen();
-              } else if (!next && isListening) {
-                stopListening();
-              }
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono transition-all border ${autoListen
-              ? 'bg-cyan-950/60 border-cyan-400/60 text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.25)]'
-              : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
-              }`}
-            title="Toggle Hands-Free Continuous Voice Conversation"
-          >
-            <Mic className={`w-3.5 h-3.5 ${autoListen ? 'text-cyan-400 animate-pulse' : 'text-slate-500'}`} />
-            <span>Hands-Free Voice: {autoListen ? 'ON' : 'OFF'}</span>
-          </button>
-
-          {/* Language Switcher (Tamil / English) */}
-          <button
-            onClick={() => {
-              const nextLang = recognitionLang === 'ta-IN' ? 'en-IN' : 'ta-IN';
-              setRecognitionLang(nextLang);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-cyan-300 transition-all"
-            title="Switch Voice Input Language (Tamil / Indian English)"
-          >
-            <span>🌐</span>
-            <span>{recognitionLang === 'ta-IN' ? 'தமிழ் (Tamil)' : 'English (IN)'}</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleInspectScreen}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/90 hover:bg-cyan-950/60 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 text-xs font-mono font-medium backdrop-blur-xl shadow-sm transition-all"
-            title="Inspect live Set-of-Marks screen observation"
-          >
-            <Eye className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Screen View</span>
-          </button>
-        </div>
-      </div>
-
       {/* Hero Live Voice Waveform / Real-Time Speech Perception Banner */}
       <div className="px-6 pt-3 pb-1 shrink-0 w-full">
         <div className="w-[70%] mx-auto">
@@ -523,17 +458,32 @@ export const ConvoComputerUseAgentView: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-slate-200 font-medium truncate mt-0.5">
-                    {interimTranscript || 'Speak your task (e.g. "Open Camera and take a pic", "Delete hello chat")...'}
+                    {interimTranscript ? (
+                      <span className="text-cyan-300 font-semibold">“{interimTranscript}”</span>
+                    ) : (
+                      'Speak your task (e.g. "Open Camera and take a pic", "Delete hello chat")...'
+                    )}
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={stopListening}
-                className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-slate-300 border border-slate-700 shrink-0"
-              >
-                Mute Mic
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setRecognitionLang(recognitionLang === 'ta-IN' ? 'en-IN' : 'ta-IN')}
+                  className="px-2 py-1 rounded-xl bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-400/50 text-[11px] font-mono text-cyan-300 flex items-center gap-1.5 transition-all shadow-sm"
+                  title="Click to toggle between English/Tanglish and Tamil speech recognition"
+                >
+                  <RefreshCw className="w-3 h-3 text-cyan-400" />
+                  <span>{recognitionLang === 'ta-IN' ? 'தமிழ் (ta-IN)' : 'English (en-IN)'}</span>
+                </button>
+                <button
+                  onClick={stopListening}
+                  className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-slate-300 border border-slate-700 shrink-0"
+                >
+                  Mute Mic
+                </button>
+              </div>
             </div>
           ) : isSpeaking ? (
             <div className="p-3 rounded-2xl bg-gradient-to-r from-purple-950/80 via-slate-900/90 to-indigo-950/80 border border-purple-500/50 shadow-lg shadow-purple-950/30 flex items-center justify-between gap-3 animate-fadeIn backdrop-blur-xl">
@@ -567,86 +517,32 @@ export const ConvoComputerUseAgentView: React.FC = () => {
             </div>
           ) : (
             <div className="p-2.5 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between gap-3 text-xs text-slate-400">
-              <div className="flex items-center gap-2">
-                <Mic className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="text-[11px] font-mono text-slate-300">
-                  Primary Voice Input Ready — Tap mic below or start speaking your computer tasks
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Mic className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="text-[11px] font-mono text-slate-300 truncate">
+                  Primary Voice Input Ready ({recognitionLang === 'ta-IN' ? 'தமிழ்' : 'English / Tanglish'}) — Tap mic below or start speaking
                 </span>
               </div>
-              <button
-                onClick={triggerVoiceListen}
-                className="px-2.5 py-0.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-[11px] font-mono text-cyan-300"
-              >
-                Start Voice
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setRecognitionLang(recognitionLang === 'ta-IN' ? 'en-IN' : 'ta-IN')}
+                  className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-mono text-cyan-300"
+                  title="Toggle speech recognition language"
+                >
+                  {recognitionLang === 'ta-IN' ? 'தமிழ்' : 'English'}
+                </button>
+                <button
+                  onClick={triggerVoiceListen}
+                  className="px-2.5 py-0.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-[11px] font-mono text-cyan-300"
+                >
+                  Start Voice
+                </button>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      {/* Screen Observation Modal */}
-      {showScreenModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="relative w-full max-w-4xl max-h-[90vh] bg-slate-950 border border-cyan-500/40 rounded-3xl p-5 shadow-2xl flex flex-col gap-4 overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Monitor className="w-5 h-5 text-cyan-400" />
-                <h3 className="font-semibold text-slate-100 text-sm">
-                  Live Screen Perception & Set-of-Marks Badges
-                </h3>
-                {liveScreenData && (
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
-                    {liveScreenData.detected_elements_count || 0} UI Elements
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleInspectScreen}
-                  disabled={isLoadingScreen}
-                  className="p-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-300 hover:text-cyan-300 disabled:opacity-50"
-                  title="Refresh screenshot"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isLoadingScreen ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  onClick={() => setShowScreenModal(false)}
-                  className="p-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-rose-400 text-slate-300 hover:text-rose-400"
-                  title="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col items-center justify-center bg-slate-900/60 rounded-2xl p-2 border border-slate-800">
-              {isLoadingScreen ? (
-                <div className="flex flex-col items-center gap-2 py-12 text-slate-400">
-                  <RefreshCw className="w-6 h-6 animate-spin text-cyan-400" />
-                  <span className="text-xs font-mono">Capturing screen and computing Set-of-Marks...</span>
-                </div>
-              ) : liveScreenData?.som_base64_image ? (
-                <img
-                  src={`data:image/png;base64,${liveScreenData.som_base64_image}`}
-                  alt="Set-of-Marks Screen Observation"
-                  className="max-h-[65vh] w-auto object-contain rounded-xl border border-cyan-500/20 shadow-md"
-                />
-              ) : (
-                <div className="text-center py-12 text-slate-500 text-xs">
-                  No screenshot captured yet. Click refresh to observe screen.
-                </div>
-              )}
-            </div>
-
-            {liveScreenData?.active_window && (
-              <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
-                <span>Active Window: <strong className="text-slate-200">{liveScreenData.active_window}</strong></span>
-                <span>Resolution: {liveScreenData.screen_width}x{liveScreenData.screen_height}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Messages Scroll Container (w-[70%] with 15% gutters on both sides) */}
       <div className="flex-1 overflow-y-auto px-2 pt-6 pb-4 custom-scrollbar w-full">
@@ -950,6 +846,17 @@ export const ConvoComputerUseAgentView: React.FC = () => {
               </span>
             </button>
 
+            {/* Fullscreen ChatGPT Voice Mode Trigger Button */}
+            <button
+              type="button"
+              onClick={() => setIsVoiceModalOpen(true)}
+              disabled={isExecuting}
+              className="p-2 rounded-full bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 hover:from-cyan-500/35 hover:to-purple-500/35 border border-cyan-400/40 hover:border-cyan-300 text-cyan-300 hover:text-white transition-all duration-300 shadow-sm shadow-cyan-950/30 hover:scale-105 active:scale-95 shrink-0 focus:outline-none disabled:opacity-40"
+              title="Launch Fullscreen Voice Conversation Mode (ChatGPT Style)"
+            >
+              <Sparkles className="w-4 h-4 text-cyan-300 animate-pulse" />
+            </button>
+
             {/* Send Button (↑) for Typed Input */}
             <button
               type="button"
@@ -963,6 +870,19 @@ export const ConvoComputerUseAgentView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* ChatGPT-Style Fullscreen Live Voice Modal (Conversational Computer-Use Agent ONLY) */}
+      <ChatGPTVoiceModal
+        isOpen={isVoiceModalOpen}
+        onClose={() => setIsVoiceModalOpen(false)}
+        onSendMessage={(spokenTask) => {
+          if (isExecutingRef.current) {
+            handleVoiceSteer(spokenTask);
+          } else {
+            handleSend(spokenTask, true);
+          }
+        }}
+      />
     </div>
   );
 };

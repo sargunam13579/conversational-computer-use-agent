@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { NexusProvider, useNexus } from './context/NexusContext';
 import { VoiceProvider, useVoice } from './context/VoiceContext';
 import { Header } from './components/layout/Header';
@@ -20,6 +21,7 @@ import type { MessageItem, ToolCallInfo } from './types';
 const MainContent: React.FC = () => {
   const {
     activeView,
+    setActiveView,
     isBackendConnected,
     isLoading,
     setMessages,
@@ -257,8 +259,10 @@ const MainContent: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#060911] text-slate-100 select-none">
-      {/* Top Header HUD - Hidden in Simple Chatbot mode, visible in Conversational Computer-Use Agent and other OS views */}
-      {!(activeView === 'assistant' && !isComputerUseActive) && <Header />}
+      {/* Top Header HUD - Only visible in Conversational Computer-Use Agent context.
+           Hidden in Simple Chatbot context (including Settings, Dashboard, etc. accessed from Simple Chatbot). */}
+      {isComputerUseActive && <Header />}
+
 
       {/* Backend connection warning banner if not connected after grace period */}
       {showDisconnectBanner && (
@@ -274,6 +278,19 @@ const MainContent: React.FC = () => {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <Sidebar onSelectPrompt={(prompt) => sendUserMessage(prompt, 'chat')} />
         <main className={`flex-1 min-h-0 overflow-y-auto ${activeView === 'assistant' ? 'p-0' : 'p-4 md:p-6 lg:p-7'}`}>
+          {/* Back arrow — shown on all secondary views so the user can return to the chat screen */}
+          {activeView !== 'assistant' && (
+            <button
+              onClick={() => setActiveView('assistant')}
+              className="mb-4 flex items-center gap-2 text-slate-400 hover:text-cyan-300 transition-colors group"
+              title="Back to Chat"
+            >
+              <span className="w-7 h-7 rounded-lg bg-slate-900/80 border border-slate-700/70 hover:border-cyan-500/50 flex items-center justify-center transition-colors group-hover:bg-slate-800">
+                <ArrowLeft className="w-4 h-4" />
+              </span>
+              <span className="text-xs font-medium tracking-wide">Back</span>
+            </button>
+          )}
           {renderView()}
         </main>
       </div>

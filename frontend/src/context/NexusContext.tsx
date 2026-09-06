@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../services/api';
+import { useAuth } from './AuthContext';
 import type {
   HealthResponse,
   IdentityResponse,
@@ -73,9 +74,21 @@ interface NexusContextType {
 const NexusContext = createContext<NexusContextType | undefined>(undefined);
 
 export const NexusProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [activeView, setActiveView] = useState<NavView>('assistant');
   const [isComputerUseActive, setIsComputerUseActive] = useState<boolean>(false);
-  const [identity, setIdentity] = useState<IdentityResponse | null>(null);
+
+  // Initialise identity with the user name from the Supabase JWT metadata so the
+  // greeting and avatar render instantly (before the /api/identity round-trip completes).
+  const initialUserName: string =
+    (user?.user_metadata?.name as string | undefined) ||
+    (user?.user_metadata?.full_name as string | undefined) ||
+    '';
+  const [identity, setIdentity] = useState<IdentityResponse | null>(
+    initialUserName
+      ? ({ user_name: initialUserName } as IdentityResponse)
+      : null
+  );
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [laptopStatus, setLaptopStatus] = useState<LaptopStatusResponse | null>(null);
   const [devices, setDevices] = useState<DeviceNode[]>([]);

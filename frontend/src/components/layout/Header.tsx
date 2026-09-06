@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Cpu,
-  Database,
-  Radio,
-  Power,
-  Activity,
-} from 'lucide-react';
+import { Power, Activity, ArrowLeft } from 'lucide-react';
 import { useNexus } from '../../context/NexusContext';
 import { useVoice } from '../../context/VoiceContext';
-import { StatusBadge } from '../common/StatusBadge';
 import { SoundWaveVisualizer } from '../common/SoundWaveVisualizer';
+import { api } from '../../services/api';
+import appLogo from '../../assets/app-logo.png';
 
 export const Header: React.FC = () => {
-  const { identity, health, isBackendConnected, triggerEmergencyStop } = useNexus();
-  const { voiceState } = useVoice();
+  const {
+    identity,
+    health,
+    triggerEmergencyStop,
+    setIsComputerUseActive,
+  } = useNexus();
+  const { voiceState, stopSpeaking } = useVoice();
   const [timeStr, setTimeStr] = useState<string>('');
   const [dateStr, setDateStr] = useState<string>('');
 
@@ -43,104 +43,100 @@ export const Header: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const formatUptime = (seconds?: number) => {
-    if (!seconds) return '00:00:00';
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const assistantName = identity?.assistant_name || 'Seyal AI';
 
-  return (
-    <header className="glass-panel rounded-none border-t-0 border-x-0 border-b border-cyan-500/20 px-6 py-3.5 flex items-center justify-between z-30 sticky top-0 bg-slate-950/80 backdrop-blur-xl">
-      {/* Brand & Assistant Identity */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex items-center justify-center">
-          <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-400/40 flex items-center justify-center shadow-[0_0_15px_rgba(0,240,255,0.25)]">
-            <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
-          </div>
-          <span className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-950" />
-        </div>
+  const handleBackToSimpleChat = () => {
+    stopSpeaking();
+    api.stopComputerUse().catch(() => {});
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsComputerUseActive(false);
+  };
 
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="font-display font-black text-xl tracking-wider text-white">
-              Seyal AI
-            </h1>
-            <span className="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-tech font-bold tracking-widest border border-cyan-500/30">
-              v{health?.version || '0.1.0'}
-            </span>
-            <span className="text-xs text-slate-500 font-mono">|</span>
-            <span className="font-tech text-sm tracking-wider text-cyan-300 font-semibold uppercase glow-text-cyan">
-              {assistantName} CORE
-            </span>
-          </div>
-          <p className="font-tech text-xs tracking-wider text-slate-400 flex items-center gap-2">
-            <span>OPERATIONAL OS</span>
-            <span>•</span>
-            <span className="text-emerald-400">
-              {health?.llm_providers?.length ? `${health.llm_providers.join(', ').toUpperCase()} ACTIVE` : 'LOCAL ENGINE'}
-            </span>
-          </p>
-        </div>
+  return (
+    <header className="glass-panel rounded-none border-t-0 border-x-0 border-b border-cyan-500/20 px-5 py-2.5 flex items-center justify-between z-30 sticky top-0 bg-slate-950/85 backdrop-blur-xl">
+
+      {/* LEFT — Brand + Assistant Name + AI Model */}
+      <div className="flex items-center gap-3 shrink-0">
+        <h1 className="font-display font-black text-2xl tracking-wider text-white leading-none">
+          Seyal <span className="text-cyan-400">AI</span>
+        </h1>
+        <span className="text-slate-600 font-mono text-sm">|</span>
+        <span className="font-tech text-sm tracking-wider text-cyan-300 font-semibold uppercase">
+          {assistantName} CORE
+        </span>
+        {health?.llm_providers?.length ? (
+          <span className="hidden sm:inline-flex items-center gap-1 text-xs font-tech text-emerald-400 font-semibold uppercase">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            {health.llm_providers.join(', ').toUpperCase()} ACTIVE
+          </span>
+        ) : null}
       </div>
 
-      {/* Center Soundwave & Voice status indicator */}
-      <div className="hidden lg:flex items-center gap-3 px-4 py-1.5 rounded-full bg-slate-900/60 border border-slate-800">
-        <Activity className="w-4 h-4 text-cyan-400" />
+      {/* CENTER — Animated Sound Wave + Voice Status */}
+      <div className="hidden lg:flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-slate-900/60 border border-slate-800">
+        <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
         <SoundWaveVisualizer state={voiceState} barCount={10} />
-        <span className="font-tech text-xs font-semibold uppercase tracking-wider text-slate-300">
+        <span className="font-tech text-xs font-semibold uppercase tracking-wider text-slate-300 whitespace-nowrap">
           VOICE: <span className="text-cyan-400">{voiceState}</span>
         </span>
       </div>
 
-      {/* Right Telemetry & Emergency Controls */}
-      <div className="flex items-center gap-5">
-        {/* Clock */}
-        <div className="text-right hidden sm:block">
-          <div className="font-mono font-bold text-base text-cyan-200 tracking-wider">
+      {/* RIGHT — Clock · Kill Switch · Back · Logo */}
+      <div className="flex items-center gap-3 shrink-0">
+
+        {/* Clock + Date */}
+        <div className="text-right hidden md:block">
+          <div className="font-mono font-bold text-sm text-cyan-200 tracking-wider leading-tight">
             {timeStr || '00:00:00'}
           </div>
-          <div className="font-tech text-[10px] text-slate-400 tracking-widest">
-            {dateStr || 'Seyal AI TIME'}
+          <div className="font-tech text-[9px] text-slate-500 tracking-widest">
+            {dateStr || ''}
           </div>
         </div>
 
-        {/* Backend & DB status */}
-        <div className="hidden md:flex items-center gap-3 pl-3 border-l border-slate-800">
-          <div className="flex items-center gap-1.5 text-xs font-tech text-slate-300" title="Database Connection">
-            <Database className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="font-mono text-[11px] text-emerald-400 uppercase">
-              {health?.database_status === 'connected' ? 'DB:OK' : 'DB:READY'}
-            </span>
-          </div>
+        {/* Divider */}
+        <span className="hidden md:block w-px h-7 bg-slate-800" />
 
-          <div className="flex items-center gap-1.5 text-xs font-tech text-slate-300" title="System Uptime">
-            <Cpu className="w-3.5 h-3.5 text-purple-400" />
-            <span className="font-mono text-[11px] text-purple-300">
-              UP: {formatUptime(health?.uptime_seconds)}
-            </span>
-          </div>
-
-          <StatusBadge
-            status={isBackendConnected ? 'online' : 'offline'}
-            label={isBackendConnected ? 'API LINK' : 'OFFLINE'}
-            size="sm"
-          />
-        </div>
-
-        {/* Emergency Stop / Kill switch */}
+        {/* KILL SWITCH */}
         <button
           type="button"
           onClick={triggerEmergencyStop}
-          className="cyber-btn cyber-btn-danger px-3 py-1.5 text-xs font-tech font-bold flex items-center gap-1.5"
-          title="Universal Kill Switch - Emergency Stop All Autonomous Actions"
+          className="cyber-btn cyber-btn-danger px-3 py-1.5 text-xs font-tech font-bold flex items-center gap-1.5 shrink-0"
+          title="Universal Kill Switch — Emergency Stop All Autonomous Actions"
         >
           <Power className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">KILL SWITCH</span>
         </button>
+
+        {/* Back to Simple Chat */}
+        <button
+          onClick={handleBackToSimpleChat}
+          title="Return to Simple Chatbot"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-700/70 hover:border-cyan-500/50 hover:bg-slate-800/80 text-slate-300 hover:text-cyan-300 transition-all text-xs font-medium group shrink-0"
+        >
+          <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+          <span className="hidden sm:inline whitespace-nowrap">Back to Simple Chat</span>
+        </button>
+
+        {/* Conversational Computer Use Agent Logo */}
+        <div
+          className="relative shrink-0"
+          title="Conversational Computer-Use Agent Active"
+        >
+          <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-cyan-400/60 shadow-[0_0_14px_rgba(0,240,255,0.5)] bg-slate-950">
+            <img
+              src={appLogo}
+              alt="Seyal AI Agent"
+              className="w-full h-full object-cover rounded-full"
+            />
+          </div>
+          {/* Active glow badge */}
+          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-cyan-400 border-2 border-slate-950 animate-ping" />
+          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-cyan-400 border-2 border-slate-950" />
+        </div>
+
       </div>
     </header>
   );
