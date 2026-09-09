@@ -17,12 +17,26 @@ from nexus.api.schemas import (
     VoiceTranscribeResponse,
 )
 from nexus.utils.logging import get_logger
-from nexus.voice.stt import STTError
+from nexus.voice.stt import STTEngine, STTError
 from nexus.voice.tts import TTSError
 
 log = get_logger("api.voice")
 
 router = APIRouter(prefix="/voice", tags=["voice"])
+
+# Module-level STT engine cache to avoid re-init overhead per request
+_stt_engine_cache: dict[str, STTEngine] = {}
+
+
+def _get_cached_stt_engine(provider_name: str, language: str) -> STTEngine:
+    """Return a cached STTEngine, creating it only once per provider+language combo."""
+    cache_key = f"{provider_name}:{language}"
+    if cache_key not in _stt_engine_cache:
+        _stt_engine_cache[cache_key] = STTEngine(
+            provider_name=provider_name,
+            language=language,
+        )
+    return _stt_engine_cache[cache_key]
 
 
 def _get_brain(request: Request):
@@ -52,7 +66,6 @@ async def transcribe_audio(
     """
     try:
         from nexus.voice.audio_io import wav_bytes_to_audio
-        from nexus.voice.stt import STTEngine
 
         settings = request.app.state.settings
 
@@ -70,11 +83,8 @@ async def transcribe_audio(
                 detail="Invalid audio format. Please upload a WAV file.",
             ) from e
 
-        # Transcribe
-        stt = STTEngine(
-            provider_name=settings.voice.stt_provider,
-            language=language,
-        )
+        # Transcribe using cached STT engine (avoids re-init overhead)
+        stt = _get_cached_stt_engine(settings.voice.stt_provider, language)
         text = await stt.transcribe(audio_data, sample_rate, language)
 
         return VoiceTranscribeResponse(

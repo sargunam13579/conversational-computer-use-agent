@@ -316,8 +316,21 @@ class ComputerActionExecutor:
                 subprocess.Popen(cmd, shell=True)
             
             # Wait for app window to appear and bring it to foreground without shrinking
-            await asyncio.sleep(1.0)
-            await self._bring_window_to_foreground(target)
+            brought = False
+            for _ in range(6):
+                await asyncio.sleep(0.5)
+                brought = await self._bring_window_to_foreground(target)
+                if brought:
+                    break
+
+            if HAS_PYAUTOGUI and (target in ("camera", "webcam") or not brought):
+                # Ensure the newly launched app takes foreground focus from Seyal AI
+                try:
+                    pyautogui.hotkey("alt", "tab")
+                except Exception:
+                    pass
+                await asyncio.sleep(0.5)
+
             return {"action": "open_app", "target": cmd, "success": True}
         except Exception as err:
             log.warning("Could not launch app %s: %s", cmd, err)
@@ -328,34 +341,90 @@ class ComputerActionExecutor:
         def _force_front() -> bool:
             try:
                 import ctypes
-                import pygetwindow as gw
+                import win32gui
+                import win32process
+                import win32con
 
                 q = query.lower().strip()
-                windows = gw.getAllWindows()
-                matched = [w for w in windows if (q in w.title.lower() or w.title.lower() in q) and w.title.strip()]
-                
-                # If specific app aliases like camera
-                if not matched and ("camera" in q or "webcam" in q):
-                    matched = [w for w in windows if "camera" in w.title.lower()]
+                user32 = ctypes.windll.user32
 
-                if matched:
-                    win = matched[0]
-                    hwnd = win._hWnd
-                    user32 = ctypes.windll.user32
-                    # Only restore if currently minimized (IsIconic) to avoid un-maximizing maximized windows!
+                # Ensure thread is attached to interactive desktop
+                try:
+                    hdesk_default = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+                    if hdesk_default:
+                        user32.SetThreadDesktop(hdesk_default)
+                except Exception:
+                    pass
+
+                matched_hwnds: list[int] = []
+
+                def enum_cb(hwnd: int, _: Any) -> bool:
+                    if user32.IsWindowVisible(hwnd):
+                        raw_t = win32gui.GetWindowText(hwnd) or ""
+                        t = raw_t.lower().strip()
+                        if not t:
+                            return True  # Never match empty window titles
+                        if q in t or (t and t in q):
+                            matched_hwnds.append(hwnd)
+                        elif ("camera" in q or "webcam" in q) and "camera" in t:
+                            matched_hwnds.append(hwnd)
+                    return True
+
+                win32gui.EnumWindows(enum_cb, None)
+
+                # Fallback to pygetwindow if win32gui found none
+                if not matched_hwnds:
+                    try:
+                        import pygetwindow as gw
+                        windows = gw.getAllWindows()
+                        for w in windows:
+                            w_title = (w.title or "").lower().strip()
+                            if not w_title:
+                                continue
+                            if q in w_title or (w_title and w_title in q):
+                                matched_hwnds.append(w._hWnd)
+                            elif ("camera" in q or "webcam" in q) and "camera" in w_title:
+                                matched_hwnds.append(w._hWnd)
+                    except Exception:
+                        pass
+
+                if matched_hwnds:
+                    hwnd = matched_hwnds[0]
+                    # Restore if minimized
                     if user32.IsIconic(hwnd):
                         user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                     else:
-                        user32.ShowWindow(hwnd, 5)  # SW_SHOW (preserves maximized state!)
+                        user32.ShowWindow(hwnd, 5)  # SW_SHOW
+
+                    # Force HWND_TOPMOST then HWND_NOTOPMOST to punch through maximized Electron
+                    HWND_TOPMOST = -1
+                    HWND_NOTOPMOST = -2
+                    SWP_NOMOVE = 0x0002
+                    SWP_NOSIZE = 0x0001
+                    SWP_SHOWWINDOW = 0x0040
+
+                    user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+                    user32.BringWindowToTop(hwnd)
+                    user32.SetForegroundWindow(hwnd)
+                    user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+
+                    fore_hwnd = user32.GetForegroundWindow()
+                    if fore_hwnd and fore_hwnd != hwnd:
+                        try:
+                            fore_tid, _ = win32process.GetWindowThreadProcessId(fore_hwnd)
+                            target_tid, _ = win32process.GetWindowThreadProcessId(hwnd)
+                            if fore_tid != target_tid:
+                                user32.AttachThreadInput(fore_tid, target_tid, True)
+                                user32.BringWindowToTop(hwnd)
+                                user32.SetForegroundWindow(hwnd)
+                                user32.AttachThreadInput(fore_tid, target_tid, False)
+                        except Exception:
+                            pass
 
                     # Simulate ALT key to bypass Windows SetForegroundWindow restrictions
                     user32.keybd_event(0x12, 0, 0, 0)
                     user32.SetForegroundWindow(hwnd)
                     user32.keybd_event(0x12, 0, 2, 0)
-                    try:
-                        win.activate()
-                    except Exception:
-                        pass
                     return True
             except Exception as e:
                 log.debug("Foreground activation notice: %s", e)

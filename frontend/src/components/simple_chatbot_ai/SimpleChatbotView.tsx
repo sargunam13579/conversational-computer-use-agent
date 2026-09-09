@@ -84,8 +84,6 @@ export const SimpleChatbotView: React.FC<SimpleChatbotViewProps> = ({
       setComputerUseConversationId(null);
       setComputerUseMessages([]);
       setIsComputerUseActive(true);
-      // Instant welcome greeting without self intro
-      speakInstant(`Welcome ${userName}! Naan ready. Sollunga, enna pannalam?`);
     } else {
       setIsComputerUseActive(false);
       stopSpeaking();

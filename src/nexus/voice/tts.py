@@ -130,26 +130,20 @@ class EdgeTTSProvider(BaseTTSProvider):
             ) from err
 
         # Normalize voice identifier
-        resolved_voice = voice or "en-IN-PrabhatNeural"
+        resolved_voice = voice or "en-US-AvaNeural"
+        if resolved_voice.lower() in ("breeze", "default"):
+            resolved_voice = "en-US-AvaNeural"
 
-        # Detect Tamil Unicode characters (U+0B80 to U+0BFF) and route to Edge TTS Tamil Neural voice
+        # Detect Tamil Unicode characters (U+0B80 to U+0BFF) and route to appropriate Tamil Neural voice
         has_tamil = any("\u0b80" <= c <= "\u0bff" for c in text)
         if has_tamil:
-            resolved_voice = "ta-IN-ValluvarNeural"
-        elif resolved_voice.lower() in (
-            "breeze",
-            "en-us-breezeneural",
-            "breeze-male",
-            "breeze-voice",
-            "default",
-            "indian",
-            "indian-male",
-            "indian-men",
-            "en-in-prabhatneural",
-            "en-us-andrewneural",
-            "en-us-jennyneural",
-        ):
-            resolved_voice = "en-IN-PrabhatNeural"
+            if resolved_voice.startswith("ta-"):
+                # Use the chosen Tamil voice directly (e.g. ta-IN-PallaviNeural or ta-IN-ValluvarNeural)
+                pass
+            elif any(f_name in resolved_voice.lower() for f_name in ("ava", "jenny", "emma", "neerja", "pallavi", "female")):
+                resolved_voice = "ta-IN-PallaviNeural"
+            else:
+                resolved_voice = "ta-IN-ValluvarNeural"
 
         # Convert speed to edge-tts format: e.g. -8% for relaxed, natural human tempo
         speed_pct = int((speed - 1.0) * 100)

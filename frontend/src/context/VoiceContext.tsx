@@ -37,12 +37,17 @@ interface VoiceContextType {
   startContinuousListening: () => void;
   stopListening: () => void;
   speakText: (text: string, onEnd?: () => void) => Promise<void>;
-  speakInstant: (text: string, onEnd?: () => void) => void;
+  speakInstant: (
+    text: string,
+    onEnd?: () => void,
+    onProgress?: (revealedText: string) => void
+  ) => void;
   speakAssistantResponse: (
     text: string,
     turnId: number,
     onEnd?: () => void,
-    onStart?: (durationSec?: number) => void
+    onStart?: (durationSec?: number) => void,
+    onProgress?: (revealedText: string) => void
   ) => Promise<void>;
   cancelCurrentSpeech: (reason?: string) => void;
   stopSpeaking: () => void;
@@ -239,9 +244,9 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [autoVoiceResponse, setAutoVoiceResponse] = useState<boolean>(true);
   const [recognitionLang, setRecognitionLangState] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('nexus_recognition_lang') || 'en-IN';
+      return localStorage.getItem('nexus_recognition_lang') || 'ta-IN';
     }
-    return 'en-IN';
+    return 'ta-IN';
   });
   const recognitionLangRef = useRef<string>(recognitionLang);
   const [voiceStyle, setVoiceStyleState] = useState<VoiceStyleType>('auto');
@@ -559,21 +564,41 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             autoGainControl: true,
           },
         })
-        .then((stream) => {
+        .then(async (stream) => {
           mediaStreamRef.current = stream;
           try {
             const AudioContextClass =
               window.AudioContext || (window as any).webkitAudioContext;
             if (!AudioContextClass) return;
 
+            // Close existing AudioContext if open
+            if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+              try {
+                audioContextRef.current.close();
+              } catch {
+                // ignore
+              }
+            }
+
             const audioCtx = new AudioContextClass({ sampleRate: 16000 });
             audioContextRef.current = audioCtx;
+
+            if (audioCtx.state === 'suspended') {
+              await audioCtx.resume();
+            }
 
             const source = audioCtx.createMediaStreamSource(stream);
             const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
             scriptProcessorRef.current = scriptNode;
 
+            isRecognitionActiveRef.current = true;
+            setVoiceState('listening');
+            console.log('[VOICE] Hardware microphone active & listening');
+
             scriptNode.onaudioprocess = (e) => {
+              if (audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(() => {});
+              }
               if (isSpeakingRef.current || isProcessingRef.current || isTranscribingBackendRef.current) {
                 return;
               }
@@ -585,11 +610,10 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               }
               const rms = Math.sqrt(sum / inputData.length);
 
-              // Sound detected above noise floor
-              if (rms > 0.018) {
+              // Sound detected above noise floor (0.008 catches natural, soft human speech)
+              if (rms > 0.008) {
                 if (!isAudioSpeakingDetectedRef.current) {
                   isAudioSpeakingDetectedRef.current = true;
-                  setInterimTranscript('🎙️ Listening to you...');
                 }
                 audioBufferChunksRef.current.push(new Float32Array(inputData));
 
@@ -609,8 +633,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     const chunks = audioBufferChunksRef.current;
                     audioBufferChunksRef.current = [];
 
-                    // Need at least ~0.35s of audio to be a real utterance
-                    if (chunks.length < 3) {
+                    // Need at least ~0.25s of audio to be a real utterance
+                    if (chunks.length < 2) {
                       setInterimTranscript('');
                       return;
                     }
@@ -625,7 +649,6 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
                     try {
                       isTranscribingBackendRef.current = true;
-                      setInterimTranscript('Recognizing speech...');
                       const targetRate = 16000;
                       const downsampled = downsampleBuffer(merged, audioCtx.sampleRate, targetRate);
                       const wavBlob = encodeWavBlob(downsampled, targetRate);
@@ -644,7 +667,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     } finally {
                       isTranscribingBackendRef.current = false;
                     }
-                  }, 650);
+                  }, 750);
                 }
               }
             };
@@ -723,21 +746,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               clearTimeout(silenceTimerRef.current);
             }
 
+            // Natural human pause threshold (750ms): prevents premature cutoff of multi-word phrases like "hello jarvis"
             silenceTimerRef.current = setTimeout(() => {
               if (combinedTranscript.length > 0) {
                 console.log('[VOICE] Speech pause detected -> committing speech:', combinedTranscript);
                 dispatchFinalTranscript(combinedTranscript);
               }
-            }, 700);
-          }
-
-          if (accumulatedFinal.length > 0 && accumulatedInterim.length === 0) {
-            if (silenceTimerRef.current) {
-              clearTimeout(silenceTimerRef.current);
-            }
-            silenceTimerRef.current = setTimeout(() => {
-              dispatchFinalTranscript(accumulatedFinal);
-            }, 350);
+            }, 750);
           }
         };
 
@@ -823,7 +838,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       text: string,
       turnId: number,
       onEnd?: () => void,
-      onStart?: (durationSec?: number) => void
+      onStart?: (durationSec?: number) => void,
+      onProgress?: (revealedText: string) => void
     ) => {
       // 1. Turn validation: check that this turn is still the active/latest request
       if (turnId !== activeTurnIdRef.current) {
@@ -857,11 +873,19 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // 4. Cancel any currently playing speech
       cancelCurrentSpeech('new_response');
 
-      let chosenVoiceId = selectedVoiceNameRef.current || 'en-IN-PrabhatNeural';
+      let chosenVoiceId = selectedVoiceNameRef.current || 'en-US-AvaNeural';
       if (containsTamilScript(cleanSpoken)) {
-        chosenVoiceId = 'ta-IN-ValluvarNeural';
+        if (chosenVoiceId.startsWith('ta-')) {
+          // Use chosen Tamil voice directly
+        } else if (/ava|jenny|emma|neerja|pallavi|female/i.test(chosenVoiceId)) {
+          chosenVoiceId = 'ta-IN-PallaviNeural';
+        } else {
+          chosenVoiceId = 'ta-IN-ValluvarNeural';
+        }
       }
       console.log(`[TTS START] turnId=${turnId} voice="${chosenVoiceId}" text="${cleanSpoken.slice(0, 70)}"`);
+
+      const rawWords = text.trim().split(/\s+/);
 
       const handleSpeechComplete = () => {
         isSpeakingRef.current = false;
@@ -876,6 +900,10 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             // ignore
           }
           activeAudioUrlRef.current = null;
+        }
+
+        if (onProgress) {
+          onProgress(text);
         }
 
         if (onEnd) {
@@ -899,10 +927,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       };
 
-      // Try Backend High-Definition Edge Neural TTS first (studio quality, zero click noise)
+      // Try Backend High-Definition Edge Neural TTS first with a 2.2s race timeout (so it never blocks user)
       let backendSuccess = false;
       try {
-        const audioBlob = await api.synthesizeSpeech(cleanSpoken, chosenVoiceId, 0.92);
+        const synthPromise = api.synthesizeSpeech(cleanSpoken, chosenVoiceId, 0.92);
+        const timeoutPromise = new Promise<Blob | null>((resolve) => setTimeout(() => resolve(null), 2200));
+        const audioBlob = await Promise.race([synthPromise, timeoutPromise]);
+
         if (audioBlob && audioBlob.size > 100) {
           if (turnId !== activeTurnIdRef.current) {
             console.warn(`[STALE AUDIO DROPPED] turnId=${turnId}`);
@@ -915,6 +946,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const audio = new Audio(audioUrl);
           activeAudioRef.current = audio;
 
+          let progressInterval: any = null;
+
           audio.onplay = () => {
             isSpeakingRef.current = true;
             setVoiceState('speaking');
@@ -926,13 +959,34 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 console.warn('onStart error:', startErr);
               }
             }
+
+            // Simultaneous word-by-word streaming in exact sync with audio playback
+            if (onProgress && rawWords.length > 0) {
+              onProgress(rawWords[0]);
+              const duration = (audio.duration && !isNaN(audio.duration) && audio.duration > 0)
+                ? audio.duration
+                : rawWords.length * 0.35;
+
+              progressInterval = setInterval(() => {
+                if (audio.paused || audio.ended) {
+                  clearInterval(progressInterval);
+                  onProgress(text);
+                  return;
+                }
+                const ratio = Math.min(1, Math.max(0, audio.currentTime / duration));
+                const wordCount = Math.min(rawWords.length, Math.max(1, Math.ceil(ratio * rawWords.length)));
+                onProgress(rawWords.slice(0, wordCount).join(' '));
+              }, 40);
+            }
           };
 
           audio.onended = () => {
+            if (progressInterval) clearInterval(progressInterval);
             handleSpeechComplete();
           };
 
           audio.onerror = (err) => {
+            if (progressInterval) clearInterval(progressInterval);
             console.warn('Audio playback notice:', err);
             handleSpeechComplete();
           };
@@ -947,7 +1001,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         backendSuccess = false;
       }
 
-      // Fallback: Browser Web Speech Synthesis if backend audio was unavailable
+      // Fallback: Browser Web Speech Synthesis (0ms start delay & native word boundary event)
       if (!backendSuccess) {
         if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
           try {
@@ -971,7 +1025,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               utterance.voice = matchedVoice;
             }
             utterance.lang = matchedVoice?.lang || 'en-US';
-            utterance.rate = 0.92;
+            utterance.rate = 0.95;
             utterance.pitch = 1.0;
 
             utterance.onstart = () => {
@@ -981,12 +1035,27 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               }
               isSpeakingRef.current = true;
               setVoiceState('speaking');
+              if (onProgress && rawWords.length > 0) {
+                onProgress(rawWords[0]);
+              }
               if (onStart) {
                 try {
                   const estSec = cleanSpoken.split(' ').length * 0.28;
                   onStart(estSec);
                 } catch (startErr) {
                   console.warn('onStart error:', startErr);
+                }
+              }
+            };
+
+            // Hardware-level word-by-word boundary synchronization!
+            utterance.onboundary = (event: any) => {
+              if (event.name === 'word' && onProgress) {
+                const charIndex = event.charIndex ?? 0;
+                const charLength = event.charLength ?? 0;
+                const revealed = text.slice(0, Math.min(text.length, charIndex + charLength + 1)).trim();
+                if (revealed) {
+                  onProgress(revealed);
                 }
               }
             };
@@ -1026,7 +1095,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 
   const speakInstant = useCallback(
-    (text: string, onEnd?: () => void) => {
+    (text: string, onEnd?: () => void, onProgress?: (revealedText: string) => void) => {
       if (!text || !text.trim()) {
         if (onEnd) onEnd();
         return;
@@ -1041,6 +1110,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return;
           }
 
+          const rawWords = text.trim().split(/\s+/);
           const utterance = new SpeechSynthesisUtterance(cleanSpoken);
           const rawVoices = window.speechSynthesis.getVoices() || [];
 
@@ -1083,6 +1153,9 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             isSpeakingRef.current = false;
             activeUtteranceRef.current = null;
             (window as any).__nexus_active_utterance = null;
+            if (onProgress) {
+              onProgress(text);
+            }
             if (onEnd && !isCanceled) {
               try {
                 onEnd();
@@ -1105,6 +1178,20 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           utterance.onstart = () => {
             isSpeakingRef.current = true;
             setVoiceState('speaking');
+            if (onProgress && rawWords.length > 0) {
+              onProgress(rawWords[0]);
+            }
+          };
+
+          utterance.onboundary = (event: any) => {
+            if (event.name === 'word' && onProgress) {
+              const charIndex = event.charIndex ?? 0;
+              const charLength = event.charLength ?? 0;
+              const revealed = text.slice(0, Math.min(text.length, charIndex + charLength + 1)).trim();
+              if (revealed) {
+                onProgress(revealed);
+              }
+            }
           };
 
           utterance.onend = () => {

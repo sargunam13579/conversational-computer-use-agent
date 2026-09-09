@@ -233,6 +233,7 @@ export const api = {
   // Conversational Computer-Use Agent
   async getComputerUseStatus(): Promise<{
     status: string;
+    is_task?: boolean;
     history_count: number;
     history: Array<{
       step: number;
@@ -244,6 +245,13 @@ export const api = {
     }>;
   }> {
     const { data } = await apiClient.get('/computer-use/status');
+    return data;
+  },
+
+  async getComputerUseWelcome(userName = 'Friend'): Promise<{ greeting: string }> {
+    const { data } = await apiClient.get('/computer-use/welcome', {
+      params: { user_name: userName },
+    });
     return data;
   },
 

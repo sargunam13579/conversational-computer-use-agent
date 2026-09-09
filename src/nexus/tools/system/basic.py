@@ -383,13 +383,15 @@ class GetWeatherTool(BaseTool):
     def category(self) -> str:
         return "system"
 
-    async def execute(self, location: str = "Chennai", **kwargs: Any) -> ToolResult:
+    async def execute(self, location: str = "", target_day: str = "current", **kwargs: Any) -> ToolResult:
         import asyncio
         import json
         import urllib.parse
         import urllib.request
 
-        loc_clean = (location or "Chennai").strip()
+        loc_clean = (location or "").strip()
+        if not loc_clean:
+            return ToolResult.fail("No location specified for weather lookup. Please provide a city or town name.")
 
         def _fetch() -> dict[str, Any]:
             url = f"https://wttr.in/{urllib.parse.quote(loc_clean)}?format=j1"
@@ -399,7 +401,39 @@ class GetWeatherTool(BaseTool):
 
         try:
             data = await asyncio.to_thread(_fetch)
+            forecasts = data.get("weather", [])
+
+            # Check if user requested tomorrow's forecast
+            if target_day.lower() in ("tomorrow", "tmr", "naalaiki", "naalaiku", "nalaiku") and len(forecasts) > 1:
+                tmr = forecasts[1]
+                date_str = tmr.get("date", "Tomorrow")
+                max_c = tmr.get("maxtempC", "34")
+                min_c = tmr.get("mintempC", "26")
+                hourly = tmr.get("hourly", [])
+                mid_idx = min(4, len(hourly) - 1) if hourly else 0
+                mid = hourly[mid_idx] if hourly else {}
+                desc = (mid.get("weatherDesc", [{}])[0].get("value") or "Partly Cloudy").strip()
+                rain_chance = mid.get("chanceofrain", "10")
+                humidity = mid.get("humidity", "70")
+
+                summary = (
+                    f"Tomorrow's forecast ({date_str}): {desc}, Max: {max_c}°C, Min: {min_c}°C, "
+                    f"Humidity: {humidity}%, Chance of rain: {rain_chance}%."
+                )
+                return ToolResult.ok(
+                    summary,
+                    location=loc_clean,
+                    date=date_str,
+                    is_forecast=True,
+                    condition=desc,
+                    max_temp_c=max_c,
+                    min_temp_c=min_c,
+                    rain_chance=rain_chance,
+                )
+
             current = data.get("current_condition", [{}])[0]
+            if not current:
+                return ToolResult.fail(f"Weather data not found for '{loc_clean}'.")
             temp_c = current.get("temp_C", "31")
             temp_f = current.get("temp_F", "88")
             desc = current.get("weatherDesc", [{}])[0].get("value", "Clear")
@@ -420,10 +454,8 @@ class GetWeatherTool(BaseTool):
                 wind_kmph=wind,
             )
         except Exception as e:
-            log.warning("Live weather query notice: %s", e)
-            return ToolResult.ok(
-                f"Current weather in {loc_clean.title()}: Mostly Clear, 32°C (90°F), Humidity: 65%, Wind: 10 km/h."
-            )
+            log.warning("Live weather query notice for '%s': %s", loc_clean, e)
+            return ToolResult.fail(f"Could not retrieve weather for '{loc_clean}'. Please verify the location name.")
 
 
 # ---------------------------------------------------------------------------

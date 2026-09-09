@@ -65,8 +65,10 @@ class DirectActionRequest(BaseModel):
 async def get_computer_use_status() -> dict[str, Any]:
     """Get current status, telemetry, and step history of the computer-use agent."""
     agent = get_agent()
+    is_task_running = getattr(agent, "is_task_running", False)
     return {
         "status": str(agent.status),
+        "is_task": bool(is_task_running),
         "history_count": len(agent.history),
         "history": [
             {
@@ -244,3 +246,11 @@ async def execute_direct_action(req: DirectActionRequest) -> dict[str, Any]:
     )
     result = await executor.execute(action)
     return result
+
+
+@router.get("/welcome")
+async def get_welcome_greeting(user_name: str = "Friend") -> dict[str, Any]:
+    """Generate dynamic, context-aware personalized welcome greeting based on memory and time of day."""
+    agent = get_agent()
+    greeting = await agent.generate_welcome_greeting(user_name=user_name)
+    return {"greeting": greeting}

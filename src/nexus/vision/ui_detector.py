@@ -201,6 +201,8 @@ class UIElementDetector:
                 descendants = top_win.descendants()
                 idx = 1
                 for control in descendants:
+                    if idx > 45:
+                        break
                     try:
                         c_type_str = (
                             control.friendly_class_name() or control.element_info.control_type or ""

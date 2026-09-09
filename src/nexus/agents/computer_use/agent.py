@@ -12,6 +12,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import time
 from typing import Any
 
@@ -102,6 +103,22 @@ When given compound or multi-item requests (e.g., `"hello" and "hiii" chats ah d
    - Inspect screen after each sub-task to verify execution.
    - If a click missed or dropdown didn't appear, immediately roll back to previous sub-task and re-target coordinates accurately.
 
+3. **COMPOUND TASKS & MUST-COMPLETE MANDATE (CRITICAL)**:
+   - When user gives a compound instruction (e.g., "camera open panni, one pic adu" / "notepad open pannitu text type pannu"):
+     * Clause 1: Open the app.
+     * Clause 2: Perform the inner action (Take photo, type text, click button).
+     * STRICT PROHIBITION: NEVER output `finish` after merely opening the app! You MUST execute the requested action inside the app before finishing!
+   - COLLOQUIAL VOCABULARY:
+     * In Tamil/Tanglish, "adu" or "edu" means "எடு" (take / capture)!
+     * "pic adu" / "pic edu" / "photo adu" / "photo edu" = TAKE A PHOTO!
+     * "screenshot adu" / "screenshot edu" = TAKE A SCREENSHOT!
+   - CAMERA PHOTO CAPTURE:
+     * In Windows Camera: Once camera is open and focused, capture a photo by:
+       - Clicking the round Camera Shutter / Take Photo button on the right edge of viewfinder, OR
+       - Using `{"action_type": "key_press", "key": "space"}` or `{"action_type": "key_press", "key": "enter"}`!
+     * Once captured, output `{"action_type": "finish"}` with narration:
+       "Camera open panni photo eduthuten-pa! 📸✨ Next என்ன பண்ணட்டும்?"
+
 🎯 CORE LIFECYCLE RULE 3: MULTILINGUAL COMPREHENSION (TAMIL, TANGLISH, ENGLISH) & ATTRACTIVE CONVERSATIONAL REPLAY:
 1. **Multilingual Understanding**:
    - Fluently understand user instructions in pure Tamil (e.g. "VS Code open பண்ணு", "Desktop-la இருக்குற Java folder open பண்ணு", "New file create பண்ணி palindrome code போடு", "Run பண்ணு"), Tanglish, or English.
@@ -144,6 +161,24 @@ Output format (strictly JSON object only):
 }
 """
 
+CHATBOT_SYSTEM_PROMPT = """You are Seyal AI (Jarvis), a brilliant, warm, charming, and highly helpful AI companion on Windows.
+You excel at both deep conversation (answering any question, coding, math, science, creative ideas, jokes, empathy) and operating the PC.
+
+PERSONALITY & SPEAKING STYLE:
+- Speak in a natural, lively, and attractive Tanglish (Tamil + English blend) or pure English/Tamil depending on how the user speaks.
+- Be polite, witty, enthusiastic, and human-like (e.g., "Hello-nga! Nalla irukinga-la? 😊", "Kandippa solren!", "Super question-nga!", "Idho details...").
+- Never sound robotic, cold, or boring.
+- When answering questions or explaining concepts, give clear, accurate, and structured explanations.
+- End your responses warmly, inviting the next thought or task ("Next enna seiyattum, sollunga! ✨").
+
+FACTUAL INTEGRITY & CHAT HISTORY AWARENESS:
+- Always base factual statements about user data, saved sessions, and sidebar chat history STRICTLY on the verified facts provided below.
+- NEVER fabricate, approximate, or hallucinate numbers or topics (e.g., NEVER say "oru 30 chats-uku mela irukku" or invent fake chat names or random topics).
+- When the user asks about chats (e.g., "hello name la ethana chat erukku", "ethana chat irukku", "how many chats"):
+  * Distinguish filter keywords from greetings! If the user says "hello name la" or "pic chats", "hello" or "pic" is the TARGET FILTER, NOT a greeting to you.
+  * Report the EXACT verified counts and titles from the active sidebar (and mention the Simple Chatbot sidebar if relevant).
+"""
+
 
 class ConversationalComputerUseAgent:
     """
@@ -170,14 +205,20 @@ class ConversationalComputerUseAgent:
         self._max_steps = max_steps
 
         self._status = AgentStatus.IDLE
+        self._is_task_running = False
         self._steering_queue: asyncio.Queue[SteeringInstruction] = asyncio.Queue()
         self._history: list[StepRecord] = []
+        self._convo_history: list[dict[str, str]] = []
         self._stop_requested = False
         self._current_task: str = ""
 
     @property
     def status(self) -> AgentStatus:
         return self._status
+
+    @property
+    def is_task_running(self) -> bool:
+        return self._is_task_running
 
     @property
     def history(self) -> list[StepRecord]:
@@ -253,22 +294,610 @@ class ConversationalComputerUseAgent:
 
         return False, ""
 
+    async def _classify_and_store_memory(self, user_input: str) -> None:
+        """
+        Extract and store memory according to the 3-Tier Importance System:
+        - LOW: Disposable queries (weather, battery, hello, math, single-turn actions) -> Discarded from long-term memory.
+        - MEDIUM: Active projects or ongoing work (e.g. timetable generator, python app) -> Stored in CURRENT_TASK.
+        - HIGH: Life milestones, future dates, user preferences (e.g. interview, exam, preferences) -> Stored in USER_DEFINED_INFO.
+        """
+        clean = user_input.strip()
+        lower = clean.lower()
+
+        # 1. LOW: Immediate discards
+        disposable_triggers = (
+            "weather", "climate", "battery", "time", "hello", "hi", "hey",
+            "open ", "close ", "click ", "type ", "screenshot", "stop", "cancel"
+        )
+        if any(dt in lower for dt in disposable_triggers) and not any(
+            kw in lower for kw in ["interview", "exam", "building", "project", "prefer", "my name"]
+        ):
+            return  # LOW -> Do not store in permanent memory
+
+        # 2. HIGH: Life milestones, events, preferences
+        high_patterns = (
+            "interview", "exam", "presentation", "meeting", "deadline", "appointment",
+            "tomorrow i have", "today i have", "my name is", "i prefer", "prefer short",
+            "enakku pidikkum", "naan oru"
+        )
+        if any(hp in lower for hp in high_patterns):
+            try:
+                import datetime
+                from nexus.memory.manager import MemoryManager
+                from nexus.memory.types import MemoryCategory
+                manager = MemoryManager()
+                now = datetime.datetime.now()
+                target_date = now.date()
+                if "tomorrow" in lower or "naalaiki" in lower:
+                    target_date = (now + datetime.timedelta(days=1)).date()
+                elif "yesterday" in lower or "nethu" in lower:
+                    target_date = (now - datetime.timedelta(days=1)).date()
+
+                payload = {
+                    "text": clean,
+                    "created_at": now.isoformat(),
+                    "event_date": target_date.isoformat(),
+                }
+                await manager.storage.store(
+                    key="latest_user_milestone",
+                    value=payload,
+                    category=MemoryCategory.USER_DEFINED_INFO,
+                    tags=["importance:high", "milestone"],
+                    metadata=payload,
+                )
+                log.info("Saved HIGH-importance milestone with event_date=%s: '%s'", target_date, clean)
+            except Exception as e:
+                log.debug("Memory store notice: %s", e)
+            return
+
+        # 3. MEDIUM: Ongoing projects and dev tasks
+        medium_patterns = (
+            "building", "developing", "creating a", "working on", "timetable",
+            "project", "app create", "generator", "making a"
+        )
+        if any(mp in lower for mp in medium_patterns):
+            try:
+                import datetime
+                from nexus.memory.manager import MemoryManager
+                from nexus.memory.types import MemoryCategory
+                manager = MemoryManager()
+                now = datetime.datetime.now()
+                payload = {
+                    "text": clean,
+                    "created_at": now.isoformat(),
+                    "updated_at": now.isoformat(),
+                }
+                await manager.storage.store(
+                    key="active_project_context",
+                    value=payload,
+                    category=MemoryCategory.CURRENT_TASK,
+                    tags=["importance:medium", "project"],
+                    metadata=payload,
+                )
+                log.info("Saved MEDIUM-importance project context: '%s'", clean)
+            except Exception as e:
+                log.debug("Memory store notice: %s", e)
+
+    async def generate_welcome_greeting(self, user_name: str = "Friend") -> str:
+        """
+        Generate a dynamic, human-like, context-aware welcome greeting based on:
+        - Time of day (Morning, Afternoon, Evening)
+        - HIGH-importance memories with temporal decay (today vs yesterday vs expired)
+        - MEDIUM-importance memories (active project within 7 days)
+        - Natural Tanglish / Tamil persona
+        """
+        import datetime
+        now = datetime.datetime.now()
+        today = now.date()
+        hour = now.hour
+
+        if 5 <= hour < 12:
+            time_greeting = "Good morning"
+        elif 12 <= hour < 17:
+            time_greeting = "Good afternoon"
+        elif 17 <= hour < 22:
+            time_greeting = "Good evening"
+        else:
+            time_greeting = "Hey"
+
+        # Check for High & Medium memories
+        milestone_data = None
+        project_data = None
+        try:
+            from nexus.memory.manager import MemoryManager
+            manager = MemoryManager()
+            rec_high = await manager.storage.find_by_key("latest_user_milestone")
+            if rec_high and rec_high.value:
+                milestone_data = rec_high.value if isinstance(rec_high.value, dict) else {"text": str(rec_high.value)}
+
+            rec_med = await manager.storage.find_by_key("active_project_context")
+            if rec_med and rec_med.value:
+                project_data = rec_med.value if isinstance(rec_med.value, dict) else {"text": str(rec_med.value)}
+        except Exception as e:
+            log.debug("Memory check notice for greeting: %s", e)
+
+        # 1. Temporal reasoning for HIGH-priority milestones (Interview, Exam, Presentation)
+        if milestone_data and "text" in milestone_data:
+            text = milestone_data["text"]
+            lower_text = text.lower()
+            event_date_str = milestone_data.get("event_date")
+            days_diff = None
+            if event_date_str:
+                try:
+                    event_date = datetime.date.fromisoformat(event_date_str)
+                    days_diff = (today - event_date).days
+                except Exception:
+                    days_diff = None
+
+            # Only follow up if the event is today or was yesterday (within 2 days)
+            if days_diff is not None and days_diff in (0, 1):
+                if "interview" in lower_text:
+                    if days_diff == 0:
+                        return f"Hey {user_name}, {time_greeting}-nga! Innaiki unga interview irukku-la? All the best-nga! Confidence-ah pannunga! 🌟"
+                    else:
+                        return f"Hey {user_name}, {time_greeting}-nga! Nethu unga interview eppadi pochu? Nalla pannengala? Today enna plan, sollunga! 😊✨"
+                elif "exam" in lower_text:
+                    if days_diff == 0:
+                        return f"Hey {user_name}, {time_greeting}-nga! Innaiki unga exam irukku-la? All the very best! Nalla ezhudhunga! 🎓✨"
+                    else:
+                        return f"Hey {user_name}, {time_greeting}-nga! Nethu exam eppadi pochu? Nalla ezhudhineengala? Today enna seiyalam, sollunga! 🎓✨"
+                elif "presentation" in lower_text or "meeting" in lower_text:
+                    return f"{time_greeting} {user_name}-nga! Unga presentation / meeting nalla mudinjadha? Next enna task pannattum, sollunga! 🚀"
+
+        # 2. Check for MEDIUM-priority active projects within 7 days
+        if project_data and "text" in project_data:
+            proj_text = project_data["text"]
+            lower_p = proj_text.lower()
+            created_str = project_data.get("created_at")
+            is_recent = True
+            if created_str:
+                try:
+                    created_dt = datetime.datetime.fromisoformat(created_str)
+                    if (now - created_dt).days > 7:
+                        is_recent = False
+                except Exception:
+                    pass
+
+            if is_recent:
+                if "timetable" in lower_p:
+                    return f"Vanakkam {user_name}-nga! Ungaloda timetable generator project work eppadi pogudhu? Innaiki adhai continue pannalama, illa vera task edhavadhu seiyalama? 📅✨"
+                else:
+                    short_p = proj_text[:30]
+                    return f"{time_greeting} {user_name}-nga! Ungaloda '{short_p}' work eppadi pogudhu? Innaiki enna task seiyalam, sollunga! 💻✨"
+
+        # 3. Default Fresh Time-of-Day Personal Greeting (if no active milestones or projects)
+        return f"{time_greeting} {user_name}-nga! Nalla irukinga-la? Innaiki enna interesting-ana task seiyalam, sollunga! 😊✨"
+
+    async def _classify_intent(self, goal: str) -> str:
+        """
+        Classify user message into 'CONVERSATION', 'CONVERSATION_GREETING', 'SYSTEM_WEATHER', 'SYSTEM_BATTERY', or 'TASK'.
+        """
+        lower_goal = goal.lower().strip()
+        lower_clean = re.sub(r"[^\w\s]", "", lower_goal).strip()
+
+        # 1. Quick Emergency Stop
+        if lower_clean in ("stop", "cancel", "pause", "halt", "stop it", "niruthu"):
+            return "STOP"
+
+        # 2. Weather Triggers
+        weather_triggers = [
+            "weather", "climate", "rain", "temperature", "வானிலை", "வெதர்", "மழை", "mazhai",
+            "appadi erukku", "eppadi irukku", "epdi irukku", "how is the weather"
+        ]
+        if any(w in lower_clean for w in weather_triggers) and not any(
+            action_kw in lower_clean for action_kw in ["open", "click", "type", "run", "launch", "write", "delete", "create", "calc"]
+        ):
+            return "SYSTEM_WEATHER"
+
+        # 3. Battery / System Triggers
+        battery_triggers = ["battery", "charge", "percentage", "battery status", "charging", "battery level"]
+        if any(b in lower_clean for b in battery_triggers) and not any(
+            action_kw in lower_clean for action_kw in ["open", "click", "type", "run", "launch", "delete"]
+        ):
+            return "SYSTEM_BATTERY"
+
+        # 4. Obvious "No Task" / Casual chit-chat indicators (< 0.1ms)
+        no_task_triggers = [
+            "task athum illa", "task ethum illa", "task illa", "no task", "not a task",
+            "task onnum illa", "onnum illa", "ethuvum illa", "summa", "summa thaan",
+            "summa pesuren", "just chat", "just chatting", "just talking", "nothing",
+            "bore adikuthu", "bore"
+        ]
+        if any(nt in lower_clean for nt in no_task_triggers) and not any(
+            action_kw in lower_clean for action_kw in ["open", "click", "type", "run", "launch", "write", "delete", "create"]
+        ):
+            return "CONVERSATION"
+
+        # 5. Obvious Computer-Use Task Triggers (< 0.2ms)
+        task_action_prefixes = (
+            "open ", "launch ", "start ", "close ", "kill ", "click ", "double click ",
+            "right click ", "type ", "press ", "scroll ", "screenshot ", "take photo ",
+            "photo edu ", "screenshot edu ", "window-va moodu", "close pannu", "open pannu"
+        )
+        task_action_suffixes = (
+            "open pannu", "open panu", "open pannunga", "close pannu", "close panu",
+            "moodu", "play pannu", "type pannu", "click pannu", "delete pannu", "run pannu"
+        )
+        known_apps = (
+            "notepad", "calculator", "calc", "chrome", "google chrome", "edge",
+            "browser", "camera", "vscode", "vs code", "explorer", "spotify",
+            "paint", "terminal", "powershell", "cmd", "taskmgr", "task manager"
+        )
+        has_app = any(app in lower_clean for app in known_apps)
+        has_action = (
+            any(lower_clean.startswith(p) for p in task_action_prefixes)
+            or any(lower_clean.endswith(s) for s in task_action_suffixes)
+            or any(s in lower_clean for s in task_action_suffixes)
+        )
+        if has_app and has_action:
+            return "TASK"
+
+        # 6. Obvious Chatbot Q&A Triggers (< 0.2ms)
+        convo_triggers = (
+            "what is", "who is", "who are", "why is", "why does", "how does", "how to",
+            "explain", "tell me", "can you tell", "describe", "write a poem", "write a code",
+            "write python", "kavithai", "joke", "comedy", "kadhai", "story", "solren",
+            "enna solra", "meaning", "define", "translate", "advise", "advice"
+        )
+        if any(ct in lower_clean for ct in convo_triggers) and not (has_app and has_action):
+            return "CONVERSATION"
+
+        # 7. Fast Semantic Classification via ModelTier.FAST (< 200ms) for edge cases
+        try:
+            await self._router.initialize()
+            classify_prompt = (
+                "You are an intent classification system for an AI companion on Windows.\n"
+                "Classify the following user input into either 'CONVERSATION' or 'TASK':\n"
+                "- 'CONVERSATION': The user is chatting, asking questions, seeking explanations, requesting code, math, jokes, advice, feelings, opinions, or general chit-chat. (NO direct desktop OS action required).\n"
+                "- 'TASK': The user wants the agent to directly operate the computer OS right now (e.g. open an application, click somewhere on screen, type text into an app, close a window, take a photo with camera, take a screenshot, manage files).\n\n"
+                f"User Input: \"{goal}\"\n\n"
+                "Output strictly ONE word: CONVERSATION or TASK"
+            )
+            res = await self._router.generate(
+                messages=[LLMMessage(role="user", content=classify_prompt)],
+                tier=ModelTier.FAST,
+                temperature=0.0,
+            )
+            raw = (res.content or "").strip().upper()
+            if "TASK" in raw:
+                return "TASK"
+            return "CONVERSATION"
+        except Exception as e:
+            log.warning("Intent classification LLM notice: %s. Using heuristic.", e)
+            task_verbs = ["open", "launch", "close", "click", "type", "press", "scroll", "maximize", "minimize", "kill", "shut"]
+            if any(tv in lower_clean.split() for tv in task_verbs):
+                return "TASK"
+            return "CONVERSATION"
+
+    def _analyze_chat_history_query(
+        self,
+        goal: str,
+        agent_titles: list[str],
+        simple_titles: list[str],
+    ) -> str | None:
+        """Analyze if user is querying for chat count, history, or specific chat names."""
+        goal_lower = goal.lower().strip()
+        chat_keywords = ["chat", "chats", "சேட்", "session", "sessions", "sidebar", "history"]
+        if not any(kw in goal_lower for kw in chat_keywords):
+            return None
+
+        query_intent_keywords = [
+            "ethana", "athana", "ethanai", "athanai", "எத்தனை", "how many", "count",
+            "total", "list", "show", "irukku", "erukku", "இருக்", "solren", "sollu"
+        ]
+        if not any(q in goal_lower for q in query_intent_keywords):
+            return None
+
+        target_filter = None
+        quoted_match = re.search(r'["\']([^"\']+)["\']', goal)
+        cand_stop = {
+            "all", "motha", "total", "intha", "antha", "oru", "the", "my", "enga", "unga",
+            "ethana", "athana", "ethanai", "athanai", "how", "many", "recent", "new", "old",
+            "side", "sidebar", "sila", "some", "nalla", "enna", "irukura", "erukura", "la"
+        }
+
+        if quoted_match:
+            target_filter = quoted_match.group(1).strip()
+        else:
+            name_match = re.search(
+                r'(\b[\w\u0B80-\u0BFF\-]+)\s+(?:name(?:\s*la|-la)?|title(?:\s*la|-la)?|nu|endru|endra|peyiril)\b',
+                goal,
+                re.IGNORECASE,
+            )
+            if name_match:
+                cand = name_match.group(1).strip()
+                if cand.lower() not in cand_stop:
+                    target_filter = cand
+            else:
+                chat_kw_match = re.search(
+                    r'(\b[\w\u0B80-\u0BFF\-]+)\s+(?:chats?|சேட்)\b',
+                    goal,
+                    re.IGNORECASE,
+                )
+                if chat_kw_match:
+                    cand = chat_kw_match.group(1).strip()
+                    if cand.lower() not in cand_stop:
+                        target_filter = cand
+
+        if target_filter:
+            tf_lower = target_filter.lower()
+            matching_agent = [t for t in agent_titles if tf_lower in t.lower()]
+            matching_simple = [t for t in simple_titles if tf_lower in t.lower()]
+
+            return (
+                f"[DETERMINISTIC VERIFIED CHAT QUERY RESULT FOR USER QUESTION]:\n"
+                f"- User Query Target Name: '{target_filter}'\n"
+                f"- CRITICAL NOTE: '{target_filter}' in the user query is a TITLE SEARCH FILTER, NOT a greeting to the assistant!\n"
+                f"- In Current Active Sidebar (Conversational Computer-Use Agent):\n"
+                f"  * Total matching chats: {len(matching_agent)}\n"
+                f"  * Matching titles: {json.dumps(matching_agent, ensure_ascii=False)}\n"
+                f"- In Alternate Sidebar (Simple Chatbot):\n"
+                f"  * Total matching chats: {len(matching_simple)}\n"
+                f"  * Matching titles: {json.dumps(matching_simple, ensure_ascii=False)}\n\n"
+                f"STRICT RESPONSE INSTRUCTIONS:\n"
+                f"1. Clearly state the exact count of chats matching '{target_filter}' in the active Conversational Computer-Use Agent sidebar ({len(matching_agent)} chats).\n"
+                f"2. Also mention how many match in the Simple Chatbot sidebar ({len(matching_simple)} chats) so the user gets complete clarity across both modes.\n"
+                f"3. List the matching chat names.\n"
+                f"4. NEVER fabricate numbers or invent random topics (like 'pal pal'). Use ONLY the exact numbers and titles provided above."
+            )
+        else:
+            return (
+                f"[DETERMINISTIC VERIFIED CHAT QUERY RESULT FOR USER QUESTION]:\n"
+                f"- Current Active Sidebar (Conversational Computer-Use Agent) Total: {len(agent_titles)} chats\n"
+                f"- Alternate Sidebar (Simple Chatbot) Total: {len(simple_titles)} chats\n"
+                f"- Recent Active Sidebar Titles: {json.dumps(agent_titles[:15], ensure_ascii=False)}\n\n"
+                f"STRICT RESPONSE INSTRUCTIONS:\n"
+                f"1. State that the active Conversational Computer-Use Agent sidebar currently has exactly {len(agent_titles)} chats.\n"
+                f"2. Mention that the Simple Chatbot sidebar has {len(simple_titles)} chats.\n"
+                f"3. Do NOT approximate with vague numbers (like '30-ku mela') or fabricate chat topics. State the exact numbers directly."
+            )
+
+    async def _handle_conversational_query(self, goal: str) -> dict[str, Any]:
+        """Process conversational chit-chat, Q&A, and discussion using the Full Chatbot Engine."""
+        self._status = AgentStatus.THINKING
+        await self._router.initialize()
+
+        # Build dynamic system prompt including recent saved sessions from sidebar if available
+        system_content = CHATBOT_SYSTEM_PROMPT
+        query_fact: str | None = None
+        try:
+            from nexus.database.engine import get_session
+            from nexus.database.repositories.conversation import ConversationRepository
+            async with get_session() as db_session:
+                repo = ConversationRepository(db_session)
+                all_convs, _ = await repo.list_conversations(offset=0, limit=200)
+                if all_convs:
+                    agent_convs = [c for c in all_convs if (c.summary or "").startswith("[Computer-Use]")]
+                    simple_convs = [c for c in all_convs if not (c.summary or "").startswith("[Computer-Use]")]
+
+                    agent_titles = [c.summary.replace("[Computer-Use]", "").strip() for c in agent_convs if c.summary]
+                    simple_titles = [c.summary.strip() for c in simple_convs if c.summary]
+
+                    query_fact = self._analyze_chat_history_query(goal, agent_titles, simple_titles)
+
+                    session_info = (
+                        f"\n\nCURRENT SAVED SESSIONS IN USER'S NEXUS SIDEBAR:\n"
+                        f"- Active Mode: Conversational Computer-Use Agent ({len(agent_titles)} total chats)\n"
+                        f"  Recent titles: {json.dumps(agent_titles[:25], ensure_ascii=False)}\n"
+                        f"- Other Mode: Simple Chatbot ({len(simple_titles)} total chats)\n"
+                        f"  Recent titles: {json.dumps(simple_titles[:15], ensure_ascii=False)}"
+                    )
+                    if query_fact:
+                        session_info += f"\n\n{query_fact}"
+                    system_content += session_info
+        except Exception as db_err:
+            log.debug("Session list retrieval notice: %s", db_err)
+
+        messages = [LLMMessage(role="system", content=system_content)]
+        for msg in self._convo_history[-10:]:
+            messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
+        messages.append(LLMMessage(role="user", content=goal))
+
+        try:
+            generation_temp = 0.15 if query_fact else 0.7
+            resp = await self._router.generate(
+                messages=messages,
+                tier=ModelTier.FAST,
+                temperature=generation_temp,
+            )
+            reply_text = (resp.content or "").strip()
+        except Exception as e:
+            log.warning("Chatbot generation notice: %s", e)
+            reply_text = "Romba interesting-ana vishayam-nga! Enna task seiyattum sollunga! 😊✨"
+
+        if not reply_text:
+            reply_text = "Sollunga! Enna help pannattum? 😊✨"
+
+        # Update persistent conversational working memory
+        self._convo_history.append({"role": "user", "content": goal})
+        self._convo_history.append({"role": "assistant", "content": reply_text})
+        if len(self._convo_history) > 20:
+            self._convo_history = self._convo_history[-20:]
+
+        self._status = AgentStatus.IDLE
+        self._is_task_running = False
+        await self._event_bus.emit(
+            "computer_use.finished",
+            {"goal": goal, "narration": reply_text, "step": 0},
+        )
+        return {
+            "status": "completed",
+            "intent": "CONVERSATION",
+            "is_task": False,
+            "goal": goal,
+            "narration": reply_text,
+            "steps_executed": 0,
+            "history": [],
+        }
+
+    async def _extract_weather_location(self, goal: str) -> str | None:
+        """Extract and standardize city/town name from weather query dynamically without hardcoded city defaults."""
+        candidate: str | None = None
+        # Heuristic regex:
+        m = re.search(r"\b([a-zA-Z\u0B80-\u0BFF]{3,})\b\s*(?:-|\s)?(?:la|le|il|ula|lo)\s+(?:weather|climate|rain|mazhai|வெதர்|வானிலை)", goal, re.IGNORECASE)
+        if m:
+            candidate = m.group(1).strip()
+        else:
+            m2 = re.search(r"(?:weather|climate|rain|mazhai)\s+(?:in|at|for|of)\s+([a-zA-Z\u0B80-\u0BFF\s]{3,})", goal, re.IGNORECASE)
+            if m2:
+                candidate = re.sub(r"\b(today|now|tomorrow|appadi|eppadi|irukku|erukku|please|nga)\b.*", "", m2.group(1), flags=re.IGNORECASE).strip()
+
+        # Fast LLM normalization (normalizes typos/Tanglish e.g. "truttani" -> "Tiruttani", "kovai" -> "Coimbatore", detects "NONE")
+        try:
+            await self._router.initialize()
+            prompt = (
+                "Extract and standardize the city/town/location name from the user weather query.\n"
+                f'User query: "{goal}"\n'
+                "Rules:\n"
+                "- If a city/town/location is mentioned (even with colloquial spelling, e.g. 'truttani' -> 'Tiruttani', 'kovai' -> 'Coimbatore', 'chennai' -> 'Chennai'), output ONLY the standardized official English city name.\n"
+                "- If NO city or location is mentioned in the query at all (e.g. 'weather appadi erukku?'), output strictly 'NONE'.\n"
+                "Output ONLY the location name or NONE, nothing else."
+            )
+            res = await self._router.generate(
+                messages=[LLMMessage(role="user", content=prompt)],
+                tier=ModelTier.FAST,
+                temperature=0.0,
+            )
+            val = (res.content or "").strip().replace("'", "").replace('"', "")
+            if val and val.upper() != "NONE" and len(val) < 40:
+                return val
+        except Exception as e:
+            log.warning("Location extraction via LLM notice: %s", e)
+            if candidate and len(candidate) < 30:
+                return candidate.title()
+
+        return candidate.title() if (candidate and len(candidate) < 30) else None
+
+    async def _handle_weather_query(self, goal: str) -> dict[str, Any]:
+        """Fetch live weather or forecast dynamically for any city/town without defaulting to Chennai."""
+        target_city = await self._extract_weather_location(goal)
+        lower_clean = goal.lower()
+        is_tomorrow = any(
+            w in lower_clean
+            for w in ["tomorrow", "naalaiki", "naalaiku", "nalaiku", "naalai", "repu"]
+        )
+
+        if not target_city:
+            narration = "Endha ooru-ku (city-ku) weather paakanum-nga? (e.g. Tiruttani, Avadi, Chennai, Coimbatore) Sollunga, paathu solren! 🌦️"
+        else:
+            try:
+                from nexus.tools.system.basic import GetWeatherTool
+                weather_tool = GetWeatherTool()
+                target_day = "tomorrow" if is_tomorrow else "current"
+                w_res = await weather_tool.execute(location=target_city, target_day=target_day)
+                if hasattr(w_res, "success") and not w_res.success:
+                    narration = f"Mannikavum, {target_city}-ku weather details edukka mudiyala-nga. Ooru name correct-ah nu check pannunga! 🌦️"
+                else:
+                    weather_summary = w_res.output if hasattr(w_res, "output") else str(w_res)
+                    if is_tomorrow:
+                        narration = f"{target_city}-la naalaiki (tomorrow) weather: {weather_summary} ⛅ Next enna pannattum, sollunga! ✨"
+                    else:
+                        narration = f"{target_city}-la ippo weather: {weather_summary} 🌦️ Next enna pannattum, sollunga! ✨"
+            except Exception as w_err:
+                log.warning("Weather lookup notice for %s: %s", target_city, w_err)
+                narration = f"Mannikavum, {target_city}-ku weather details edukka mudiyala-nga. Ooru name correct-ah nu check pannunga! 🌦️"
+
+        self._convo_history.append({"role": "user", "content": goal})
+        self._convo_history.append({"role": "assistant", "content": narration})
+
+        self._status = AgentStatus.IDLE
+        self._is_task_running = False
+        await self._event_bus.emit(
+            "computer_use.finished",
+            {"goal": goal, "narration": narration, "step": 0},
+        )
+        return {
+            "status": "completed",
+            "intent": "CONVERSATION",
+            "is_task": False,
+            "goal": goal,
+            "narration": narration,
+            "steps_executed": 0,
+            "history": [],
+        }
+
+    async def _handle_battery_query(self, goal: str) -> dict[str, Any]:
+        """Fetch system battery status and respond conversationally."""
+        try:
+            import psutil
+            battery = psutil.sensors_battery()
+            if battery:
+                plugged = "charger connected-la irukku" if battery.power_plugged else "battery mode-la run aagudhu"
+                narration = f"Ungaloda laptop battery ippo {round(battery.percent)}%-la irukku-nga! ({plugged}) 🔋✨ Next enna seiyattum, sollunga!"
+            else:
+                narration = "Laptop battery status details ippo retrieve panna mudiyala-nga! Desktop PC-la run aagudha nu check pannunga. 😊✨"
+        except Exception as b_err:
+            log.warning("Battery status notice: %s", b_err)
+            narration = "Battery status check panna mudiyala-nga. Vera enna help seiyattum sollunga! 😊"
+
+        self._convo_history.append({"role": "user", "content": goal})
+        self._convo_history.append({"role": "assistant", "content": narration})
+
+        self._status = AgentStatus.IDLE
+        self._is_task_running = False
+        await self._event_bus.emit(
+            "computer_use.finished",
+            {"goal": goal, "narration": narration, "step": 0},
+        )
+        return {
+            "status": "completed",
+            "intent": "CONVERSATION",
+            "is_task": False,
+            "goal": goal,
+            "narration": narration,
+            "steps_executed": 0,
+            "history": [],
+        }
+
     async def run_goal(self, goal: str, auto_confirm: bool = False) -> dict[str, Any]:
         """
-        Execute an end-to-end conversational computer-use goal.
+        Execute an end-to-end goal as a Unified Dual-Engine (Chatbot + Computer-Use Agent).
         """
         self._stop_requested = False
         self._current_task = goal
         self._history.clear()
-        self._status = AgentStatus.OBSERVING
+        self._is_task_running = False
+        self._status = AgentStatus.IDLE
 
+        # Background 3-Tier memory learning (LOW discarded, MEDIUM/HIGH stored)
+        asyncio.create_task(self._classify_and_store_memory(goal))
+
+        # 1. First classify intent: Conversation vs Task vs System
+        intent = await self._classify_intent(goal)
+        log.info("Classified goal intent: '%s' for input: '%s'", intent, goal)
+
+        if intent == "STOP":
+            self._status = AgentStatus.STOPPED
+            self._is_task_running = False
+            return {"status": "stopped", "intent": "STOP", "is_task": False, "reason": "User requested stop", "steps_executed": 0}
+
+        if intent in ("CONVERSATION", "CONVERSATION_GREETING"):
+            return await self._handle_conversational_query(goal)
+
+        if intent == "SYSTEM_WEATHER":
+            return await self._handle_weather_query(goal)
+
+        if intent == "SYSTEM_BATTERY":
+            return await self._handle_battery_query(goal)
+
+        # 2. TASK INTENT: Computer-Use Execution Engine
+        self._is_task_running = True
+        self._status = AgentStatus.OBSERVING
         await self._event_bus.emit(
             "computer_use.started",
             {"goal": goal, "max_steps": self._max_steps},
         )
 
+        # Emit immediate verbal acknowledgment so user hears voice confirmation in < 800ms
+        clean_name = goal[:35].strip()
+        ack_narration = f"Kandippa-nga, ippo {clean_name} task-ah start panren! 🚀"
+        await self._event_bus.emit(
+            "computer_use.narrate",
+            {"narration": ack_narration, "step": 0},
+        )
+
         step_num = 0
-        final_result: dict[str, Any] = {"status": "completed", "goal": goal, "steps_executed": 0}
+        final_result: dict[str, Any] = {"status": "completed", "intent": "TASK", "is_task": True, "goal": goal, "steps_executed": 0}
         opened_external_apps: list[str] = []
 
         # Check if user explicitly requested to keep external windows open
@@ -369,6 +998,28 @@ class ConversationalComputerUseAgent:
 
                 # Check for completion
                 if action_type == ActionType.FINISH:
+                    # Guard for camera photo task: if user asked for a photo and no shutter was fired yet, auto-trigger space shutter!
+                    if "camera" in lower_goal and any(kw in lower_goal for kw in ["pic", "photo", "adu", "edu", "picture", "snap", "take"]):
+                        photo_taken = any(
+                            (r.action.action_type == ActionType.KEY_PRESS and r.action.key in ("space", "enter"))
+                            or (r.action.action_type == ActionType.CLICK and "shutter" in (r.thought or "").lower())
+                            for r in self._history
+                        )
+                        if not photo_taken:
+                            log.info("Camera photo task guard: photo not taken yet. Auto-triggering Spacebar shutter.")
+                            comp_action = ComputerAction(action_type=ActionType.KEY_PRESS, key="space", reasoning="Press Spacebar to capture photo in Windows Camera")
+                            narration = "Camera-la photo capture panniten-pa! 📸"
+                            action_res = await self._executor.execute(comp_action)
+                            self._history.append(StepRecord(
+                                step_number=step_num,
+                                observation=obs,
+                                thought="Pressed Spacebar to capture photo in Windows Camera",
+                                action=comp_action,
+                                action_result=action_res,
+                                success=True,
+                                elapsed_seconds=0.1,
+                            ))
+
                     if narration and not any(q in narration.lower() for q in ["next", "என்ன", "enna", "what next", "pannattum"]):
                         narration = f"{narration} Next என்ன பண்ணட்டும்? ✨"
 
@@ -441,6 +1092,7 @@ class ConversationalComputerUseAgent:
             self._status = AgentStatus.FAILED
             return {"status": "failed", "error": str(e), "steps_executed": len(self._history)}
         finally:
+            self._is_task_running = False
             if self._status in (AgentStatus.OBSERVING, AgentStatus.THINKING, AgentStatus.ACTING, AgentStatus.COMPLETED, AgentStatus.STOPPED):
                 self._status = AgentStatus.IDLE
 
@@ -488,11 +1140,27 @@ class ConversationalComputerUseAgent:
             pass
 
         # Task guideline hint
+        lower_goal = goal.lower().strip()
         task_category_hint = (
             "STRICT ACTION RULE: NEVER automatically close any application unless the user EXPLICITLY instructed 'close' in their goal. "
             "Never close background apps (like Google Chrome, VS Code, or Nexus). "
             "When completing any goal, keep apps open and enthusiastically ask 'Next enna pannattum?'"
         )
+
+        if "camera" in lower_goal and any(kw in lower_goal for kw in ["pic", "photo", "adu", "edu", "picture", "snap", "take"]):
+            task_category_hint += (
+                "\n📸 CAMERA COMPOUND TASK MANDATE:\n"
+                "- The user requested to OPEN CAMERA and TAKE A PHOTO ('pic adu' / 'photo edu' = take a photo in Tamil/Tanglish)!\n"
+                "- If Camera app is in the background or not focused: Focus it using switch_window or focus_window.\n"
+                "- If Camera app is open on screen: Take the photo by clicking the Camera shutter button OR using key_press 'space' or 'enter'!\n"
+                "- DO NOT output 'finish' after merely opening the camera. You MUST take the photo first!"
+            )
+        elif any(kw in lower_goal for kw in ["panni", "pannitu", "and then", "and"]):
+            task_category_hint += (
+                "\n⚠️ COMPOUND GOAL MANDATE:\n"
+                "- The user has given a multi-step task ('... panni ...').\n"
+                "- Complete ALL requested steps before finishing. Never finish after only opening an app when a follow-up action was requested!"
+            )
 
         prompt = (
             f"GOAL: {goal}\n"

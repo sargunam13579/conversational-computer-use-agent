@@ -52,6 +52,8 @@ export const ConvoComputerUseAgentView: React.FC = () => {
     startListening,
     stopListening,
     speakInstant,
+    speakAssistantResponse,
+    getNextTurnId,
     stopSpeaking,
     setProcessing,
     setVoiceModeEnabled,
@@ -63,9 +65,14 @@ export const ConvoComputerUseAgentView: React.FC = () => {
 
   const [inputMessage, setInputMessage] = useState('');
   const [steerText, setSteerText] = useState('');
-  const [isExecuting, setIsExecuting] = useState(false);
-  const isExecutingRef = useRef<boolean>(false);
-  isExecutingRef.current = isExecuting;
+  const [isWaiting, setIsWaiting] = useState(false);
+  const [isTaskExecuting, setIsTaskExecuting] = useState(false);
+  const isTaskExecutingRef = useRef<boolean>(false);
+  isTaskExecutingRef.current = isTaskExecuting;
+
+  const isBusy = isWaiting || isTaskExecuting;
+  const isBusyRef = useRef<boolean>(false);
+  isBusyRef.current = isBusy;
 
   const [agentStatus, setAgentStatus] = useState<string>('idle');
   const [liveSteps, setLiveSteps] = useState<StepItem[]>([]);
@@ -93,26 +100,89 @@ export const ConvoComputerUseAgentView: React.FC = () => {
       if (!isMountedRef.current) return;
       if (finalTranscript && finalTranscript.trim()) {
         const spokenText = finalTranscript.trim();
-        if (isExecutingRef.current) {
-          // If currently executing, spoken input acts as live voice steering
+        if (isTaskExecutingRef.current) {
+          // If currently executing a real desktop task, spoken input acts as live voice steering
           handleVoiceSteer(spokenText);
-        } else {
-          // Start goal from spoken command
+        } else if (!isBusyRef.current) {
+          // Start conversation or goal from spoken command
           handleSend(spokenText, true);
         }
       }
     }, recognitionLang || 'en-IN');
   }, [startListening, recognitionLang]);
 
-  // Welcome voice greeting on mount and auto-activate voice listening
+  // Dynamic context-aware welcome greeting with once-per-session guard
   useEffect(() => {
-    if (computerUseMessages.length === 0) {
-      speakInstant(`Welcome ${userName}! Naan ready. Sollunga, enna pannalam?`, () => {
-        if (isMountedRef.current && autoListen) {
-          triggerVoiceListen();
-        }
-      });
-    } else if (autoListen && !isListening && !isSpeaking && !isExecuting) {
+    const welcomeSpoken = sessionStorage.getItem('ccua_session_welcome_spoken');
+    if (!welcomeSpoken) {
+      sessionStorage.setItem('ccua_session_welcome_spoken', 'true');
+      api
+        .getComputerUseWelcome(userName || 'Friend')
+        .then((data) => {
+          const welcomeText =
+            data?.greeting ||
+            `Good evening ${userName || 'Friend'}-nga! Naan ready. Innaiki enna interesting task seiyalam, sollunga! 😊✨`;
+
+          const welcomeMsgId = 'welcome-' + Date.now();
+
+          // 1. Initialize assistant message bubble with EMPTY text so it streams word-by-word in sync
+          setComputerUseMessages((prev) => {
+            if (prev.length === 0) {
+              return [
+                {
+                  id: welcomeMsgId,
+                  role: 'assistant',
+                  content: '',
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  model_used: 'gemini-2.5-flash',
+                },
+              ];
+            }
+            return prev;
+          });
+
+          // 2. Speak using the EXACT SAME unified assistant voice engine (speakAssistantResponse) with simultaneous word-by-word streaming!
+          const welcomeTurnId = getNextTurnId();
+          speakAssistantResponse(
+            welcomeText,
+            welcomeTurnId,
+            () => {
+              // On End: Ensure full message is visible and auto-listen starts
+              setComputerUseMessages((prev) => {
+                const next = [...prev];
+                if (next.length > 0 && next[0].id === welcomeMsgId) {
+                  next[0] = { ...next[0], content: welcomeText };
+                }
+                return next;
+              });
+              if (isMountedRef.current && autoListen) {
+                triggerVoiceListen();
+              }
+            },
+            undefined,
+            (revealedText) => {
+              // Word-by-word simultaneous live karaoke sync with audio playback!
+              setComputerUseMessages((prev) => {
+                const next = [...prev];
+                if (next.length > 0 && next[0].id === welcomeMsgId) {
+                  next[0] = { ...next[0], content: revealedText };
+                }
+                return next;
+              });
+            }
+          );
+        })
+        .catch(() => {
+          const fallback = `Good evening ${userName || 'Friend'}-nga! Naan ready. Innaiki enna interesting task seiyalam, sollunga! 😊✨`;
+          const welcomeTurnId = getNextTurnId();
+          speakAssistantResponse(fallback, welcomeTurnId, () => {
+            if (isMountedRef.current && autoListen) {
+              triggerVoiceListen();
+            }
+          });
+        });
+    } else if (autoListen && !isListening && !isSpeaking && !isBusy) {
+      // User navigated back from Simple Chat or other tab: Silent standby, do NOT repeat welcome!
       triggerVoiceListen();
     }
   }, []);
@@ -123,7 +193,20 @@ export const ConvoComputerUseAgentView: React.FC = () => {
   // Scroll to bottom on updates
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [computerUseMessages, isExecuting, liveSteps.length, interimTranscript]);
+  }, [computerUseMessages, isBusy, isTaskExecuting, liveSteps.length, interimTranscript]);
+
+  // Simultaneous live speech streaming directly into user text-bar word-by-word
+  useEffect(() => {
+    if (interimTranscript && isListening && !isBusy) {
+      const isStatusText =
+        interimTranscript.includes('Listening') ||
+        interimTranscript.includes('Recognizing') ||
+        interimTranscript.includes('🎙️');
+      if (!isStatusText && interimTranscript.trim()) {
+        setInputMessage(interimTranscript);
+      }
+    }
+  }, [interimTranscript, isListening, isBusy]);
 
   // Close add menu on outside click
   useEffect(() => {
@@ -149,10 +232,10 @@ export const ConvoComputerUseAgentView: React.FC = () => {
     };
   }, [stopSpeaking, stopListening, setVoiceModeEnabled]);
 
-  // Poll status when executing
+  // Poll status when executing a task or waiting for response
   useEffect(() => {
     let interval: any = null;
-    if (isExecuting) {
+    if (isBusy) {
       interval = setInterval(async () => {
         try {
           const res = await api.getComputerUseStatus();
@@ -160,18 +243,23 @@ export const ConvoComputerUseAgentView: React.FC = () => {
           if (res.history) {
             setLiveSteps(res.history);
           }
-          if (['completed', 'failed', 'stopped', 'idle'].includes(res.status)) {
-            setIsExecuting(false);
+          if (res.is_task) {
+            setIsTaskExecuting(true);
+            isTaskExecutingRef.current = true;
+          }
+          if (['completed', 'failed', 'stopped', 'idle'].includes(res.status) && !res.is_task) {
+            setIsTaskExecuting(false);
+            isTaskExecutingRef.current = false;
           }
         } catch (e) {
           console.debug('Status poll error', e);
         }
-      }, 1200);
+      }, 1000);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isExecuting]);
+  }, [isBusy]);
 
   const handleToggleMic = () => {
     if (isListening) {
@@ -221,7 +309,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
 
   const handleSend = async (customGoal?: string, fromVoice = false) => {
     const goal = (customGoal || inputMessage).trim();
-    if (!goal || isExecuting) return;
+    if (!goal || isBusy) return;
 
     if (fromVoice) {
       wasVoiceTriggered.current = true;
@@ -245,10 +333,11 @@ export const ConvoComputerUseAgentView: React.FC = () => {
     };
 
     setComputerUseMessages((prev) => [...prev, userMsg]);
-    setIsExecuting(true);
-    isExecutingRef.current = true;
+    setIsWaiting(true);
+    setIsTaskExecuting(false);
+    isTaskExecutingRef.current = false;
     setProcessing(true);
-    setAgentStatus('observing');
+    setAgentStatus('thinking');
     setLiveSteps([]);
 
     addActivity({
@@ -276,13 +365,17 @@ export const ConvoComputerUseAgentView: React.FC = () => {
       }
 
       const stepsTaken = res.history ? res.history.length : 0;
+      const isTask = res.intent === 'TASK' || res.is_task || stepsTaken > 0;
       const finalNarration =
         res.narration ||
-        `Done-nga! Task successfully complete panniten (${stepsTaken} steps on Windows) 🎉`;
+        (isTask
+          ? `Done-nga! Task successfully complete panniten (${stepsTaken} steps on Windows) 🎉`
+          : 'Sollunga! Enna help pannattum? 😊✨');
 
+      // Start assistant message with empty content for simultaneous word-by-word streaming
       const assistantMsg: MessageItem = {
         role: 'assistant',
-        content: finalNarration,
+        content: '',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         model_used: 'gemini-2.5-flash',
       };
@@ -290,20 +383,44 @@ export const ConvoComputerUseAgentView: React.FC = () => {
       setComputerUseMessages((prev) => [...prev, assistantMsg]);
 
       // Release locks before starting speech
-      setIsExecuting(false);
-      isExecutingRef.current = false;
+      setIsWaiting(false);
+      setIsTaskExecuting(false);
+      isTaskExecutingRef.current = false;
       setProcessing(false);
       setAgentStatus('idle');
 
-      // Primary voice feedback: speak response aloud with instant <0.1s start
-      speakInstant(finalNarration, () => {
-        // Continuous hands-free loop: resume listening after speaking narration
-        if (autoListen) {
-          setTimeout(() => {
-            triggerVoiceListen();
-          }, 80);
+      // Primary voice feedback: Simultaneous word-by-word speech & text reveal!
+      const narrationTurnId = getNextTurnId();
+      speakAssistantResponse(
+        finalNarration,
+        narrationTurnId,
+        () => {
+          // Speech ended: ensure complete message is displayed and resume listening
+          setComputerUseMessages((prev) => {
+            const next = [...prev];
+            if (next.length > 0 && next[next.length - 1].role === 'assistant') {
+              next[next.length - 1] = { ...next[next.length - 1], content: finalNarration };
+            }
+            return next;
+          });
+          if (autoListen && isMountedRef.current) {
+            setTimeout(() => {
+              triggerVoiceListen();
+            }, 80);
+          }
+        },
+        undefined,
+        (revealedText) => {
+          // Word-by-word text update simultaneous with speech audio!
+          setComputerUseMessages((prev) => {
+            const next = [...prev];
+            if (next.length > 0 && next[next.length - 1].role === 'assistant') {
+              next[next.length - 1] = { ...next[next.length - 1], content: revealedText };
+            }
+            return next;
+          });
         }
-      });
+      );
 
       addActivity({
         type: 'tool_exec',
@@ -328,8 +445,9 @@ export const ConvoComputerUseAgentView: React.FC = () => {
         status: 'error',
       });
     } finally {
-      setIsExecuting(false);
-      isExecutingRef.current = false;
+      setIsWaiting(false);
+      setIsTaskExecuting(false);
+      isTaskExecutingRef.current = false;
       setProcessing(false);
       setAgentStatus('idle');
     }
@@ -361,7 +479,9 @@ export const ConvoComputerUseAgentView: React.FC = () => {
   const handleStop = async () => {
     try {
       await api.stopComputerUse();
-      setIsExecuting(false);
+      setIsTaskExecuting(false);
+      isTaskExecutingRef.current = false;
+      setIsWaiting(false);
       setAgentStatus('stopped');
       addActivity({
         type: 'security',
@@ -500,12 +620,12 @@ export const ConvoComputerUseAgentView: React.FC = () => {
                 Stop Speech
               </button>
             </div>
-          ) : isExecuting ? (
+          ) : isTaskExecuting ? (
             <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-950/70 via-slate-900/90 to-slate-950/80 border border-amber-500/40 shadow-lg flex items-center justify-between gap-3 animate-fadeIn backdrop-blur-xl">
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <Compass className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
                 <span className="text-xs font-mono text-amber-300 truncate">
-                  ⚡ Autonomous Execution Running — Speak anytime to voice-steer or tap stop
+                  ⚡ Autonomous Computer Task Running — Speak anytime to voice-steer or tap stop
                 </span>
               </div>
               <button
@@ -514,6 +634,15 @@ export const ConvoComputerUseAgentView: React.FC = () => {
               >
                 🎙️ Speak Steer
               </button>
+            </div>
+          ) : isWaiting ? (
+            <div className="p-2.5 rounded-2xl bg-slate-900/80 border border-cyan-500/30 flex items-center justify-between gap-3 text-xs text-cyan-300 animate-fadeIn">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse shrink-0" />
+                <span className="text-[11px] font-mono text-cyan-200 truncate">
+                  Seyal AI is thinking & preparing response...
+                </span>
+              </div>
             </div>
           ) : (
             <div className="p-2.5 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between gap-3 text-xs text-slate-400">
@@ -602,7 +731,21 @@ export const ConvoComputerUseAgentView: React.FC = () => {
                     </div>
                   ) : (
                     <div>
-                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                      <p className="whitespace-pre-wrap leading-relaxed">
+                        {msg.content ? (
+                          <>
+                            {msg.content}
+                            {!isUser && idx === computerUseMessages.length - 1 && isSpeaking && (
+                              <span className="inline-block w-1.5 h-4 ml-1 bg-cyan-400 animate-pulse align-middle" />
+                            )}
+                          </>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-cyan-400 py-1">
+                            <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                            <span className="text-xs font-mono text-slate-400">Seyal AI speaking...</span>
+                          </span>
+                        )}
+                      </p>
 
                       {/* Vision-Action Step Summary Card if Assistant */}
                       {!isUser && liveSteps.length > 0 && idx === computerUseMessages.length - 1 && (
@@ -712,8 +855,8 @@ export const ConvoComputerUseAgentView: React.FC = () => {
             );
           })}
 
-          {/* Active Computer-Use Execution Progress Bubble */}
-          {isExecuting && (
+          {/* Active Computer-Use Execution Progress Bubble (ONLY for real desktop OS tasks!) */}
+          {isTaskExecuting && (
             <div className="flex items-start gap-3.5 justify-start animate-fadeIn w-full">
               <div className="w-8 h-8 rounded-full bg-cyan-600/20 border border-cyan-400/40 text-cyan-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
                 <Monitor className="w-4 h-4 text-cyan-400 animate-spin" />
@@ -738,6 +881,19 @@ export const ConvoComputerUseAgentView: React.FC = () => {
             </div>
           )}
 
+          {/* Conversational Thinking Indicator (ONLY when waiting for chat response, NOT a task) */}
+          {isWaiting && !isTaskExecuting && (
+            <div className="flex items-start gap-3.5 justify-start animate-fadeIn w-full">
+              <div className="w-8 h-8 rounded-full bg-cyan-600/20 border border-cyan-400/40 text-cyan-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
+              </div>
+              <div className="p-3.5 rounded-2xl rounded-tl-sm bg-slate-900/90 border border-cyan-500/30 text-slate-300 text-xs font-mono flex items-center gap-2 shadow-lg shadow-cyan-950/20">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                <span className="text-cyan-300 font-semibold">Seyal is thinking...</span>
+              </div>
+            </div>
+          )}
+
           <div className="h-4" />
           <div ref={messagesEndRef} />
         </div>
@@ -746,8 +902,8 @@ export const ConvoComputerUseAgentView: React.FC = () => {
       {/* Dedicated Bottom User Text-Bar Area (Non-overlapping flex sibling) */}
       <div className="shrink-0 w-full pb-6 pt-3 px-4 bg-gradient-to-t from-[#070b14] via-[#070b14]/95 to-transparent z-30">
         <div className="w-[70%] mx-auto relative space-y-2">
-          {/* Live Steering & Stop Bar when Executing */}
-          {isExecuting && (
+          {/* Live Steering & Stop Bar ONLY when an actual computer-use task is executing! */}
+          {isTaskExecuting && (
             <div className="p-2.5 rounded-2xl bg-slate-900/95 border border-amber-500/40 backdrop-blur-2xl shadow-xl shadow-black/80 flex items-center gap-2 animate-fadeIn">
               <div className="flex items-center gap-1.5 text-xs font-mono text-amber-400 font-semibold px-2 shrink-0">
                 <Compass className="w-4 h-4 animate-spin" />
@@ -818,22 +974,41 @@ export const ConvoComputerUseAgentView: React.FC = () => {
               />
             </button>
 
-            {/* Text Input (Secondary Companion Input) */}
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isExecuting}
-              placeholder="Or type computer instruction (Voice is primary)..."
-              className="flex-1 bg-transparent text-slate-100 placeholder-slate-500 text-sm sm:text-base focus:outline-none px-2 py-1 disabled:opacity-50"
-            />
+            {/* Text Input (with real-time simultaneous voice streaming) */}
+            <div className="flex-1 flex items-center relative">
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isBusy}
+                placeholder="Type or speak computer instruction..."
+                className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-sm sm:text-base focus:outline-none px-2 py-1 disabled:opacity-50"
+              />
+              {isListening && interimTranscript && (
+                <span className="absolute right-2 flex items-center gap-1.5 text-[11px] font-mono text-cyan-400 pointer-events-none animate-pulse bg-slate-950/80 px-2 py-0.5 rounded-md border border-cyan-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                  Live Voice
+                </span>
+              )}
+            </div>
+
+            {/* Language Switcher Pill (Tamil/Tanglish vs English) */}
+            <button
+              type="button"
+              onClick={() => setRecognitionLang(recognitionLang === 'ta-IN' ? 'en-IN' : 'ta-IN')}
+              disabled={isBusy}
+              className="px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-400/50 text-xs font-mono text-cyan-300 flex items-center gap-1.5 transition-all shrink-0 focus:outline-none"
+              title="Click to toggle voice language between Tamil/Tanglish and English"
+            >
+              <span>{recognitionLang === 'ta-IN' ? '🇮🇳 தமிழ் / Tanglish' : '🌐 English'}</span>
+            </button>
 
             {/* Primary Live Voice Microphone Button */}
             <button
               type="button"
               onClick={handleToggleMic}
-              disabled={isExecuting}
+              disabled={isBusy}
               className={`relative px-3.5 py-2 rounded-full flex items-center gap-2 transition-all shrink-0 focus:outline-none ${isListening
                 ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-[0_0_20px_rgba(244,63,94,0.6)] scale-105 ring-2 ring-rose-300 animate-pulse'
                 : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold shadow-[0_0_16px_rgba(0,240,255,0.4)] hover:scale-105'
@@ -850,7 +1025,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsVoiceModalOpen(true)}
-              disabled={isExecuting}
+              disabled={isBusy}
               className="p-2 rounded-full bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 hover:from-cyan-500/35 hover:to-purple-500/35 border border-cyan-400/40 hover:border-cyan-300 text-cyan-300 hover:text-white transition-all duration-300 shadow-sm shadow-cyan-950/30 hover:scale-105 active:scale-95 shrink-0 focus:outline-none disabled:opacity-40"
               title="Launch Fullscreen Voice Conversation Mode (ChatGPT Style)"
             >
@@ -861,7 +1036,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
             <button
               type="button"
               onClick={() => handleSend()}
-              disabled={!inputMessage.trim() || isExecuting}
+              disabled={!inputMessage.trim() || isBusy}
               className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 disabled:opacity-20 text-slate-300 hover:text-white font-bold flex items-center justify-center transition-all shrink-0 border border-slate-700 focus:outline-none"
               title="Send Typed Message"
             >
@@ -876,7 +1051,7 @@ export const ConvoComputerUseAgentView: React.FC = () => {
         isOpen={isVoiceModalOpen}
         onClose={() => setIsVoiceModalOpen(false)}
         onSendMessage={(spokenTask) => {
-          if (isExecutingRef.current) {
+          if (isTaskExecutingRef.current) {
             handleVoiceSteer(spokenTask);
           } else {
             handleSend(spokenTask, true);
